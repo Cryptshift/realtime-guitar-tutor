@@ -1764,6 +1764,11 @@ dialog::backdrop {
     display: none;
   }
 
+  /* Just the numbers: "Bar 1 … Bar 8" doesn't fit eight cells on a phone. */
+  .song-progress .section-word {
+    display: none;
+  }
+
   .practice-top .btn-ghost > span:not(.icon) {
     display: none;
   }

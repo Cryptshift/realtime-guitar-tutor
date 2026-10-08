@@ -74,6 +74,11 @@ export const practiceScreen = {
     const progressFill = h('div', { class: 'fill' });
     const loopRegion = h('div', { class: 'loop-region', hidden: true });
     const playhead = h('div', { class: 'playhead' });
+    // "Bar 3" / "Bars 3–4": the word gets its own span so phones can show just the numbers.
+    const sectionLabel = (label) => {
+      const [, word, numbers] = label.match(/^(Bars?)\s+(.+)$/) || [];
+      return word ? [h('span', { class: 'section-word' }, `${word} `), numbers] : [label];
+    };
     const sectionButtons = sections.map((section) => h('button', {
       class: 'section',
       type: 'button',
@@ -84,7 +89,7 @@ export const practiceScreen = {
         const same = loop && Math.abs(loop.start - section.start) < 1e-6 && Math.abs(loop.end - section.end) < 1e-6;
         setLoop(same ? null : { start: section.start, end: section.end });
       },
-    }, section.label));
+    }, ...sectionLabel(section.label)));
     const progressBar = h('div', {
       class: 'song-progress',
       role: 'group',
