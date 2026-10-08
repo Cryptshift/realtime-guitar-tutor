@@ -1,52 +1,27 @@
-// The guitar instrument: everything guitar-specific that generic code reaches through the
-// instrument interface (see ../index.js).
-import { renderFretboardView } from './fretboard.js';
-import { importTabPage } from './pageImport.js';
-import { placeGuitarNote } from './strings.js';
-import { DEFAULT_TAB_MS_PER_COLUMN, countTabLines, parsePastedTab } from './tabParser.js';
-import { buildTabDiagram, planStepLabel, tabHintText, tabSummary } from './tabView.js';
-import { TUNING_SETS } from './tuning.js';
+// Six-string guitar in standard tuning (alternate tunings available in the tuner).
+import { createFrettedInstrument } from '../fretted/index.js';
 
-export const guitar = {
+export const guitar = createFrettedInstrument({
   id: 'guitar',
   name: 'Guitar',
-  // Standard tuning, open low E (E2) to the 24th fret of the high e (E6).
-  range: { minMidi: 40, maxMidi: 88 },
-  // Pitch-detector hints: fundamentals from drop tunings (D2 ~73 Hz) to E6 (~1319 Hz).
+  description: 'Six strings, standard tuning',
+  strings: [
+    { string: 1, label: 'e', display: 'High e (1st)', openMidi: 64 },
+    { string: 2, label: 'B', display: 'B (2nd)', openMidi: 59 },
+    { string: 3, label: 'G', display: 'G (3rd)', openMidi: 55 },
+    { string: 4, label: 'D', display: 'D (4th)', openMidi: 50 },
+    { string: 5, label: 'A', display: 'A (5th)', openMidi: 45 },
+    { string: 6, label: 'E', display: 'Low E (6th)', openMidi: 40 },
+  ],
+  maxFret: 24,
+  beginnerMaxFret: 15,
+  // Fundamentals from drop tunings (D2 ~73 Hz) to the 24th fret of the high e (~1319 Hz).
   detector: { minHz: 60, maxHz: 1400, frameSize: 2048 },
-
-  placeNote: placeGuitarNote,
-  isPlayable: (note) => Boolean(note?.tab),
-  serializePlacement: (note) => ({ tab: note.tab }),
-
-  // Short label for a note/chord group (timeline markers).
-  describeGroup: (note, group) => planStepLabel(note, group),
-  // Text for the previous/current/next slots.
-  describeSlot: (note, group, emptyMessage) => ({
-    summary: tabSummary(note, group),
-    hint: tabHintText(note, group, emptyMessage),
-    diagram: buildTabDiagram(group),
-  }),
-
-  view: {
-    title: 'Finger Placement',
-    legend: 'Finger numbers are suggested (1=index ... 4=pinky).',
+  tunings: {
+    standard: { label: 'Standard (E A D G B E)', notes: ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'] },
+    drop_d: { label: 'Drop D (D A D G B E)', notes: ['D2', 'A2', 'D3', 'G3', 'B3', 'E4'] },
+    d_standard: { label: 'D Standard (D G C F A D)', notes: ['D2', 'G2', 'C3', 'F3', 'A3', 'D4'] },
+    open_g: { label: 'Open G (D G D G B D)', notes: ['D2', 'G2', 'D3', 'G3', 'B3', 'D4'] },
   },
-  renderInstrumentView: renderFretboardView,
-
-  tuner: { sets: TUNING_SETS, defaultSet: 'standard' },
-
-  importers: {
-    // Plain text pasted into the custom piece box.
-    text: {
-      formatName: '6-line ASCII tab system',
-      canParse: (text) => countTabLines(text) >= 6,
-      parse: parsePastedTab,
-    },
-    // A fetched web page.
-    page: {
-      defaultMsPerColumn: DEFAULT_TAB_MS_PER_COLUMN,
-      parse: importTabPage,
-    },
-  },
-};
+  defaultTuning: 'standard',
+});

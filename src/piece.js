@@ -75,10 +75,13 @@ export function normalizePiece(piece, instrument = getInstrument()) {
       end: start + duration,
       midi,
       freq: midiToFrequency(midi),
-      // Instrument-specific placement (guitar: tab + tabAlternatives).
+      // Instrument-specific placement (fretted: tab + tabAlternatives; piano: key).
       ...instrument.placeNote(n, midi),
       index: idx,
     };
+    // Optional performance hints: which hand, which finger (1 = thumb/index ... 5).
+    if (n.hand === 'L' || n.hand === 'R') normalizedNote.hand = n.hand;
+    if (Number.isInteger(n.finger) && n.finger >= 0 && n.finger <= 5) normalizedNote.finger = n.finger;
     normalizedNote.playable = instrument.isPlayable(normalizedNote);
     return normalizedNote;
   });
@@ -87,10 +90,12 @@ export function normalizePiece(piece, instrument = getInstrument()) {
   notes.forEach((note, index) => {
     note.index = index;
   });
+  instrument.annotatePiece?.(notes);
   assignOnsetWindows(notes);
 
   return {
     name: piece.name || 'Custom Piece',
+    instrument: instrument.id,
     bpm: piece.bpm || 100,
     notes,
     // The last-starting note is not necessarily the last to end.
@@ -145,12 +150,15 @@ export function createVirtualNote(noteName, instrument = getInstrument()) {
 export function toPieceSnapshot(normalizedPiece, instrument = getInstrument()) {
   return {
     name: normalizedPiece.name,
+    instrument: normalizedPiece.instrument || instrument.id,
     bpm: normalizedPiece.bpm,
     notes: normalizedPiece.notes.map((note) => ({
       note: note.note,
       start: note.start,
       duration: note.duration,
       ...instrument.serializePlacement(note),
+      ...(note.hand ? { hand: note.hand } : {}),
+      ...(Number.isInteger(note.finger) ? { finger: note.finger } : {}),
     })),
   };
 }

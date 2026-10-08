@@ -1,7 +1,8 @@
-// ASCII tab parsing (6-line systems by position) into piece notes.
+// ASCII tab parsing into piece notes for any fretted instrument. Systems are read by line
+// position (top line = string 1); the string count comes from the instrument's standard
+// open-string map (default: 6-string guitar).
 import { parseBpmFromText } from '../../import/metadata.js';
-import { DEFAULT_OPEN_MIDI_BY_STRING } from './strings.js';
-import { buildOpenMidiMapFromTokens, parseTuningFromText } from './tuning.js';
+import { SIX_STRING_STANDARD, buildOpenMidiMapFromTokens, parseTuningFromText } from './tuning.js';
 import { midiToNoteName, parseTuningToken } from '../../music.js';
 
 export const DEFAULT_TAB_MS_PER_COLUMN = 120;
@@ -12,9 +13,13 @@ export const TAB_NOTE_SUSTAIN_RATIO = 0.98;
 
 export const TAB_SYSTEM_GAP_COLUMNS = 0;
 
-// Converts pasted ASCII tab (any text with a full 6-line tab system) into a piece.
-export function parsePastedTab(text, { msPerColumn = DEFAULT_TAB_MS_PER_COLUMN, simplifyToSingleNotes = true } = {}) {
-  const tuning = parseTuningFromText(text, { allowBare: false });
+// Converts pasted ASCII tab (any text with a full tab system) into a piece.
+export function parsePastedTab(text, {
+  msPerColumn = DEFAULT_TAB_MS_PER_COLUMN,
+  simplifyToSingleNotes = true,
+  defaultOpenMidi = SIX_STRING_STANDARD,
+} = {}) {
+  const tuning = parseTuningFromText(text, { allowBare: false, defaultOpenMidi });
   const bpm = parseBpmFromText(text, { allowBare: false });
   const effectiveMsPerColumn = bpm && msPerColumn === DEFAULT_TAB_MS_PER_COLUMN
     ? bpmToMsPerColumn(bpm, DEFAULT_COLUMNS_PER_BEAT)
@@ -25,7 +30,7 @@ export function parsePastedTab(text, { msPerColumn = DEFAULT_TAB_MS_PER_COLUMN, 
     'Pasted Tab',
     tuning?.openMidiByString || null,
     bpm,
-    { simplifyToSingleNotes },
+    { simplifyToSingleNotes, defaultOpenMidi },
   );
   return { ...piece, importedFrom: 'ascii-tab' };
 }
@@ -75,11 +80,12 @@ export function parseTabLine(rawLine) {
   return { label, body: body.replace(/\s/g, '-') };
 }
 
-// Groups consecutive tab lines into 6-line systems by POSITION (top line = high e), so
-// duplicate "E" labels, drop-D "D" labels, lowercase and unlabelled lines all work.
-// Blocks that aren't a multiple of 6 lines (bass, 7-string, fragments) are skipped.
-// Returns { systems: [{ strings: [s1..s6 bodies], labels: [s1..s6] }], labelTuning }.
-export function parseTabSystems(tabText) {
+// Groups consecutive tab lines into N-line systems by POSITION (top line = string 1, e.g.
+// high e), so duplicate "E" labels, drop-D "D" labels, lowercase and unlabelled lines all
+// work. Blocks that aren't a multiple of N lines are skipped.
+// Returns { systems: [{ strings: [s1..sN bodies], labels: [s1..sN] }], labelTuning }.
+export function parseTabSystems(tabText, { defaultOpenMidi = SIX_STRING_STANDARD } = {}) {
+  const stringCount = Object.keys(defaultOpenMidi).length;
   const lines = stripTabMarkup(tabText).split('\n');
   const blocks = [];
   let block = [];
@@ -96,11 +102,11 @@ export function parseTabSystems(tabText) {
 
   const systems = [];
   for (const lineBlock of blocks) {
-    if (lineBlock.length % 6 !== 0) continue;
-    for (let i = 0; i < lineBlock.length; i += 6) {
-      let group = lineBlock.slice(i, i + 6);
-      // Rare low-E-on-top layout: "E" first and "e" last.
-      if (group[0].label === 'E' && group[5].label === 'e') {
+    if (lineBlock.length % stringCount !== 0) continue;
+    for (let i = 0; i < lineBlock.length; i += stringCount) {
+      let group = lineBlock.slice(i, i + stringCount);
+      // Rare low-E-on-top guitar layout: "E" first and "e" last.
+      if (stringCount === 6 && group[0].label === 'E' && group[5].label === 'e') {
         group = [...group].reverse();
       }
       systems.push({
@@ -111,21 +117,22 @@ export function parseTabSystems(tabText) {
   }
 
   if (systems.length === 0) {
-    throw new Error('No complete 6-string tab systems found');
+    throw new Error(`No complete ${stringCount}-string tab systems found`);
   }
 
-  return { systems, labelTuning: tuningFromStringLabels(systems[0].labels) };
+  return { systems, labelTuning: tuningFromStringLabels(systems[0].labels, defaultOpenMidi) };
 }
 
-// Open-string pitches implied by a full set of string labels (high e first), e.g. a
-// drop-D tab labelled e B G D A D. Null unless all six labels are present.
-export function tuningFromStringLabels(labels) {
-  if (!Array.isArray(labels) || labels.length !== 6 || labels.some((label) => !label)) {
+// Open-string pitches implied by a full set of string labels (string 1 first), e.g. a
+// drop-D tab labelled e B G D A D. Null unless every string has a label.
+export function tuningFromStringLabels(labels, defaultOpenMidi = SIX_STRING_STANDARD) {
+  const stringCount = Object.keys(defaultOpenMidi).length;
+  if (!Array.isArray(labels) || labels.length !== stringCount || labels.some((label) => !label)) {
     return null;
   }
   const tokens = labels.map((label) => parseTuningToken(label));
   if (tokens.some((token) => !token)) return null;
-  const parsed = buildOpenMidiMapFromTokens(tokens, 'high-to-low');
+  const parsed = buildOpenMidiMapFromTokens(tokens, 'high-to-low', defaultOpenMidi);
   return parsed ? parsed.openMidiByString : null;
 }
 
@@ -137,9 +144,9 @@ export function parseTabTextToPiece(
   bpm = null,
   options = {},
 ) {
-  const { simplifyToSingleNotes = true, capo = 0 } = options;
-  const { systems, labelTuning } = parseTabSystems(tabText);
-  const tuning = openMidiByString || labelTuning || DEFAULT_OPEN_MIDI_BY_STRING;
+  const { simplifyToSingleNotes = true, capo = 0, defaultOpenMidi = SIX_STRING_STANDARD } = options;
+  const { systems, labelTuning } = parseTabSystems(tabText, { defaultOpenMidi });
+  const tuning = openMidiByString || labelTuning || defaultOpenMidi;
 
   const rawEvents = [];
   let globalColumnOffset = 0;
@@ -220,7 +227,7 @@ export function parseTabTextToPiece(
         : baseDuration;
       const openMidi = Number.isFinite(tuning[event.string])
         ? tuning[event.string]
-        : DEFAULT_OPEN_MIDI_BY_STRING[event.string];
+        : defaultOpenMidi[event.string];
       const midi = openMidi + capo + event.fret;
 
       notes.push({

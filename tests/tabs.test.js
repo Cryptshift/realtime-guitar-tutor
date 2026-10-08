@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { extractTabImportData } from '../src/instruments/guitar/pageImport.js';
-import { parseTabLine, parseTabSystems, parseTabTextToPiece } from '../src/instruments/guitar/tabParser.js';
+import { extractTabImportData } from '../src/instruments/fretted/pageImport.js';
+import { parseTabLine, parseTabSystems, parseTabTextToPiece } from '../src/instruments/fretted/tabParser.js';
 import { parseCustomPieceInput } from '../src/piece.js';
 
 const STANDARD = [
@@ -141,5 +141,21 @@ describe('parseCustomPieceInput', () => {
 
   it('explains failures that are neither JSON nor tab', () => {
     expect(() => parseCustomPieceInput('hello there')).toThrow(/ASCII tab/);
+  });
+});
+
+describe('4-string tab for bass and ukulele', () => {
+  it('parses a bass tab by position', () => {
+    const bassOpen = { 1: 43, 2: 38, 3: 33, 4: 28 };
+    const tab = ['G|---------|', 'D|-----2---|', 'A|---3-----|', 'E|-0-------|'].join('\n');
+    const piece = parseTabTextToPiece(tab, 120, 'Bass', null, null, { defaultOpenMidi: bassOpen });
+    expect(piece.notes.map((n) => n.note)).toEqual(['E1', 'C2', 'E2']);
+  });
+
+  it('parses a ukulele tab with the re-entrant G string', () => {
+    const ukeOpen = { 1: 69, 2: 64, 3: 60, 4: 67 };
+    const tab = ['A|-----0---|', 'E|---0-----|', 'C|-0-------|', 'G|-------0-|'].join('\n');
+    const piece = parseTabTextToPiece(tab, 120, 'Uke', null, null, { defaultOpenMidi: ukeOpen });
+    expect(piece.notes.map((n) => n.note)).toEqual(['C4', 'E4', 'A4', 'G4']);
   });
 });

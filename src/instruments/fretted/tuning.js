@@ -1,5 +1,6 @@
-// Guitar tuning sets and tuning detection from text/labels.
-import { DEFAULT_OPEN_MIDI_BY_STRING } from './strings.js';
+// Tuning detection from page/tab text for fretted instruments. Every function takes the
+// instrument's standard open-string map ({ stringNumber: midi }, string 1 = top tab line);
+// its size is the string count. The default is a standard-tuned 6-string guitar.
 import {
   midiForPitchClassOctave,
   midiToNoteName,
@@ -7,30 +8,18 @@ import {
   parseTuningToken,
 } from '../../music.js';
 
-export const TUNING_SETS = {
-  standard: {
-    label: 'Standard (E A D G B E)',
-    notes: ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
-  },
-  drop_d: {
-    label: 'Drop D (D A D G B E)',
-    notes: ['D2', 'A2', 'D3', 'G3', 'B3', 'E4'],
-  },
-  d_standard: {
-    label: 'D Standard (D G C F A D)',
-    notes: ['D2', 'G2', 'C3', 'F3', 'A3', 'D4'],
-  },
-  open_g: {
-    label: 'Open G (D G D G B D)',
-    notes: ['D2', 'G2', 'D3', 'G3', 'B3', 'D4'],
-  },
-};
+export const SIX_STRING_STANDARD = Object.freeze({ 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 });
 
-export function scoreOpenMidiMap(openMidiByString) {
+function stringNumbersOf(defaultOpenMidi) {
+  return Object.keys(defaultOpenMidi).map(Number).sort((a, b) => a - b);
+}
+
+export function scoreOpenMidiMap(openMidiByString, defaultOpenMidi = SIX_STRING_STANDARD) {
   let score = 0;
-  [1, 2, 3, 4, 5, 6].forEach((stringNumber) => {
+  const stringNumbers = stringNumbersOf(defaultOpenMidi);
+  stringNumbers.forEach((stringNumber) => {
     const midi = openMidiByString[stringNumber];
-    const fallback = DEFAULT_OPEN_MIDI_BY_STRING[stringNumber];
+    const fallback = defaultOpenMidi[stringNumber];
     if (!Number.isFinite(midi)) {
       score += 99;
       return;
@@ -38,7 +27,7 @@ export function scoreOpenMidiMap(openMidiByString) {
     score += Math.abs(midi - fallback);
   });
 
-  const lowToHigh = [6, 5, 4, 3, 2, 1].map((stringNumber) => openMidiByString[stringNumber]);
+  const lowToHigh = [...stringNumbers].reverse().map((stringNumber) => openMidiByString[stringNumber]);
   for (let i = 1; i < lowToHigh.length; i += 1) {
     if (lowToHigh[i] <= lowToHigh[i - 1]) {
       score += 30;
@@ -54,20 +43,19 @@ export function scoreOpenMidiMap(openMidiByString) {
   return score;
 }
 
-export function buildOpenMidiMapFromTokens(tokens, orientation) {
-  if (!Array.isArray(tokens) || tokens.length !== 6) {
+export function buildOpenMidiMapFromTokens(tokens, orientation, defaultOpenMidi = SIX_STRING_STANDARD) {
+  const stringNumbers = stringNumbersOf(defaultOpenMidi);
+  if (!Array.isArray(tokens) || tokens.length !== stringNumbers.length) {
     return null;
   }
 
-  const stringOrder = orientation === 'high-to-low'
-    ? [1, 2, 3, 4, 5, 6]
-    : [6, 5, 4, 3, 2, 1];
+  const stringOrder = orientation === 'high-to-low' ? stringNumbers : [...stringNumbers].reverse();
 
   const openMidiByString = {};
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i];
     const stringNumber = stringOrder[i];
-    const targetMidi = DEFAULT_OPEN_MIDI_BY_STRING[stringNumber];
+    const targetMidi = defaultOpenMidi[stringNumber];
     const midi = token.octave === null
       ? nearestMidiForPitchClass(token.pitchClass, targetMidi)
       : midiForPitchClassOctave(token.pitchClass, token.octave);
@@ -79,21 +67,22 @@ export function buildOpenMidiMapFromTokens(tokens, orientation) {
 
   return {
     openMidiByString,
-    score: scoreOpenMidiMap(openMidiByString),
+    score: scoreOpenMidiMap(openMidiByString, defaultOpenMidi),
     orientation,
   };
 }
 
-export function pickBestTuningWindow(tokens) {
-  if (!Array.isArray(tokens) || tokens.length < 6) {
+export function pickBestTuningWindow(tokens, defaultOpenMidi = SIX_STRING_STANDARD) {
+  const count = stringNumbersOf(defaultOpenMidi).length;
+  if (!Array.isArray(tokens) || tokens.length < count) {
     return null;
   }
 
   let best = null;
-  for (let start = 0; start <= tokens.length - 6; start += 1) {
-    const windowTokens = tokens.slice(start, start + 6);
-    const lowToHigh = buildOpenMidiMapFromTokens(windowTokens, 'low-to-high');
-    const highToLow = buildOpenMidiMapFromTokens(windowTokens, 'high-to-low');
+  for (let start = 0; start <= tokens.length - count; start += 1) {
+    const windowTokens = tokens.slice(start, start + count);
+    const lowToHigh = buildOpenMidiMapFromTokens(windowTokens, 'low-to-high', defaultOpenMidi);
+    const highToLow = buildOpenMidiMapFromTokens(windowTokens, 'high-to-low', defaultOpenMidi);
     const winner = [lowToHigh, highToLow]
       .filter(Boolean)
       .sort((a, b) => a.score - b.score)[0];
@@ -111,7 +100,8 @@ export function pickBestTuningWindow(tokens) {
 }
 
 export function parseTuningFromText(rawText, options = {}) {
-  const { allowBare = false } = options;
+  const { allowBare = false, defaultOpenMidi = SIX_STRING_STANDARD } = options;
+  const extraTokens = `{${stringNumbersOf(defaultOpenMidi).length - 1},10}`;
   if (!rawText || typeof rawText !== 'string') {
     return null;
   }
@@ -122,10 +112,10 @@ export function parseTuningFromText(rawText, options = {}) {
     .replace(/&nbsp;/gi, ' ');
 
   const candidatePatterns = [
-    /(?:^|[\s>"'=])tuning(?:\s*[:=]\s*|\s+)([A-G][#b]?\d?(?:[\s,;|/\\-]+[A-G][#b]?\d?){5,10})/gi,
+    new RegExp(`(?:^|[\\s>"'=])tuning(?:\\s*[:=]\\s*|\\s+)([A-G][#b]?\\d?(?:[\\s,;|/\\\\-]+[A-G][#b]?\\d?)${extraTokens})`, 'gi'),
     /"tuning"\s*:\s*"([^"]{6,120})"/gi,
     /"tuning"\s*:\s*\[([^\]]{6,200})\]/gi,
-    /(?:open\s+tuning|tuned\s+to)\s*[:=]?\s*([A-G][#b]?\d?(?:[\s,;|/\\-]+[A-G][#b]?\d?){5,10})/gi,
+    new RegExp(`(?:open\\s+tuning|tuned\\s+to)\\s*[:=]?\\s*([A-G][#b]?\\d?(?:[\\s,;|/\\\\-]+[A-G][#b]?\\d?)${extraTokens})`, 'gi'),
   ];
 
   const chunks = [];
@@ -144,7 +134,7 @@ export function parseTuningFromText(rawText, options = {}) {
   chunks.forEach((chunk) => {
     const tokenMatches = chunk.match(/\b[A-Ga-g][#b]?(?:-?\d+)?\b/g) || [];
     const tokens = tokenMatches.map(parseTuningToken).filter(Boolean);
-    const parsed = pickBestTuningWindow(tokens);
+    const parsed = pickBestTuningWindow(tokens, defaultOpenMidi);
     if (!parsed) return;
 
     if (!best || parsed.score < best.score) {
@@ -154,7 +144,8 @@ export function parseTuningFromText(rawText, options = {}) {
 
   if (!best) return null;
 
-  const ordered = [6, 5, 4, 3, 2, 1].map((stringNumber) => midiToNoteName(best.openMidiByString[stringNumber]));
+  const ordered = [...stringNumbersOf(defaultOpenMidi)].reverse()
+    .map((stringNumber) => midiToNoteName(best.openMidiByString[stringNumber]));
   return {
     openMidiByString: best.openMidiByString,
     label: ordered.join(' '),
@@ -162,7 +153,7 @@ export function parseTuningFromText(rawText, options = {}) {
   };
 }
 
-export function extractTuningMetadata(rawText, doc) {
+export function extractTuningMetadata(rawText, doc, defaultOpenMidi = SIX_STRING_STANDARD) {
   const sources = [];
   if (doc) {
     const tuningSelectors = [
@@ -187,7 +178,7 @@ export function extractTuningMetadata(rawText, doc) {
   sources.push({ label: 'raw', text: rawText, allowBare: false });
 
   for (const source of sources) {
-    const parsed = parseTuningFromText(source.text, { allowBare: source.allowBare });
+    const parsed = parseTuningFromText(source.text, { allowBare: source.allowBare, defaultOpenMidi });
     if (parsed) {
       return {
         ...parsed,

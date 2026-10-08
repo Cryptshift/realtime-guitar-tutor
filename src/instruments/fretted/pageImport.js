@@ -1,4 +1,5 @@
-// Finds guitar tab text in a fetched page (Ultimate Guitar .js-store, generic HTML, plain text).
+// Finds tab text in a fetched page (Ultimate Guitar .js-store, generic HTML, plain text).
+// Options take the instrument's standard open-string map (default: 6-string guitar).
 import { extractBpmMetadata, parseBpmFromText } from '../../import/metadata.js';
 import {
   DEFAULT_COLUMNS_PER_BEAT,
@@ -8,7 +9,7 @@ import {
   parseTabTextToPiece,
   stripTabMarkup,
 } from './tabParser.js';
-import { extractTuningMetadata, parseTuningFromText } from './tuning.js';
+import { SIX_STRING_STANDARD, extractTuningMetadata, parseTuningFromText } from './tuning.js';
 
 // Ultimate Guitar ships the tab as JSON in <div class="js-store" data-content="...">
 // (store.page.data.tab_view): wiki_tab.content uses [tab]/[ch] markup, meta.tuning.value
@@ -23,7 +24,7 @@ export function findNestedKey(value, key, depth = 0) {
   return undefined;
 }
 
-export function extractUltimateGuitarTab(doc) {
+export function extractUltimateGuitarTab(doc, { defaultOpenMidi = SIX_STRING_STANDARD } = {}) {
   const storeEl = doc.querySelector('.js-store[data-content]');
   if (!storeEl) return null;
 
@@ -40,7 +41,7 @@ export function extractUltimateGuitarTab(doc) {
 
   const meta = tabView.meta || {};
   const tuningValue = typeof meta.tuning?.value === 'string' ? meta.tuning.value : null;
-  const tuning = tuningValue ? parseTuningFromText(tuningValue, { allowBare: true }) : null;
+  const tuning = tuningValue ? parseTuningFromText(tuningValue, { allowBare: true, defaultOpenMidi }) : null;
   const capo = Number(meta.capo);
   const bpm = parseBpmFromText(String(meta.bpm ?? ''), { allowBare: true });
 
@@ -52,16 +53,17 @@ export function extractUltimateGuitarTab(doc) {
   };
 }
 
-export function extractTabImportData(rawText) {
+export function extractTabImportData(rawText, { defaultOpenMidi = SIX_STRING_STANDARD } = {}) {
   if (!rawText || typeof rawText !== 'string') {
     throw new Error('Fetched page was empty');
   }
 
+  const minLines = Object.keys(defaultOpenMidi).length;
   const looksLikeHtml = /<[a-z!/][^>]*>/i.test(rawText);
-  if (!looksLikeHtml && countTabLines(rawText) >= 6) {
+  if (!looksLikeHtml && countTabLines(rawText) >= minLines) {
     return {
       tabText: stripTabMarkup(rawText),
-      tuning: parseTuningFromText(rawText, { allowBare: false }),
+      tuning: parseTuningFromText(rawText, { allowBare: false, defaultOpenMidi }),
       bpm: parseBpmFromText(rawText, { allowBare: false }),
       capo: 0,
     };
@@ -70,8 +72,8 @@ export function extractTabImportData(rawText) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(rawText, 'text/html');
 
-  const ultimateGuitar = extractUltimateGuitarTab(doc);
-  if (ultimateGuitar && countTabLines(ultimateGuitar.tabText) >= 6) {
+  const ultimateGuitar = extractUltimateGuitarTab(doc, { defaultOpenMidi });
+  if (ultimateGuitar && countTabLines(ultimateGuitar.tabText) >= minLines) {
     return ultimateGuitar;
   }
 
@@ -93,13 +95,13 @@ export function extractTabImportData(rawText) {
 
   candidates.sort((a, b) => b.tabLines - a.tabLines || a.text.length - b.text.length);
   const best = candidates[0];
-  if (!best || best.tabLines < 6) {
+  if (!best || best.tabLines < minLines) {
     throw new Error('Could not find tab lines in that page');
   }
 
   return {
     tabText: stripTabMarkup(best.text),
-    tuning: extractTuningMetadata(rawText, doc),
+    tuning: extractTuningMetadata(rawText, doc, defaultOpenMidi),
     bpm: extractBpmMetadata(rawText, doc),
     capo: 0,
   };
@@ -107,8 +109,13 @@ export function extractTabImportData(rawText) {
 
 // Instrument importer hook for a fetched page: finds the tab, applies page tuning/capo/BPM,
 // and converts it to a piece. A BPM on the page replaces the default ms-per-column.
-export function importTabPage(htmlOrText, { pieceName, msPerColumn, simplifyToSingleNotes = true } = {}) {
-  const { tabText, tuning, bpm, capo } = extractTabImportData(htmlOrText);
+export function importTabPage(htmlOrText, {
+  pieceName,
+  msPerColumn,
+  simplifyToSingleNotes = true,
+  defaultOpenMidi = SIX_STRING_STANDARD,
+} = {}) {
+  const { tabText, tuning, bpm, capo } = extractTabImportData(htmlOrText, { defaultOpenMidi });
   const requestedMsPerColumn = Number.isFinite(msPerColumn) ? msPerColumn : DEFAULT_TAB_MS_PER_COLUMN;
   const usingDefaultMsPerColumn = requestedMsPerColumn === DEFAULT_TAB_MS_PER_COLUMN;
   const effectiveMsPerColumn = bpm && usingDefaultMsPerColumn
@@ -121,7 +128,7 @@ export function importTabPage(htmlOrText, { pieceName, msPerColumn, simplifyToSi
     pieceName,
     tuning?.openMidiByString || null,
     bpm?.bpm || null,
-    { simplifyToSingleNotes, capo },
+    { simplifyToSingleNotes, capo, defaultOpenMidi },
   );
 
   const details = [];
