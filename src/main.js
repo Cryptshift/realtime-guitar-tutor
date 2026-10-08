@@ -1,7 +1,10 @@
 const A4 = 440;
 const A4_MIDI = 69;
 const FFT_SIZE = 2048;
-const MIN_CONFIDENCE = 0.45;
+const MIN_PITCH_CLARITY = 0.7;
+const MPM_PEAK_THRESHOLD = 0.9;
+const PITCH_MIN_HZ = 60;
+const PITCH_MAX_HZ = 1400;
 const MIN_SIGNAL_RMS = 0.0025;
 const MIC_LEVEL_MAX_RMS = 0.06;
 const MAX_CENTS_FOR_PERFECT = 12;
@@ -1693,6 +1696,20 @@ function downmixAudioBufferToMono(audioBuffer) {
   return mono;
 }
 
+function frequencyToFractionalMidi(freq) {
+  return 12 * Math.log2(freq / A4) + A4_MIDI;
+}
+
+function medianOf(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+// Max distance (semitones) from the running pitch of a note before a frame is treated as a
+// new note. Below 1 so chromatic neighbours split; above 0.5 so mild vibrato doesn't.
+const AUDIO_TAB_SAME_NOTE_SEMITONES = 0.6;
+
 function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs = 130) {
   if (!monoData?.length) return [];
 
@@ -1700,88 +1717,72 @@ function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs = 130) {
   const hopSize = Math.max(256, Math.floor(sampleRate * 0.03));
   const frameSeconds = hopSize / sampleRate;
   const minFrames = Math.max(2, Math.round((Math.max(80, minNoteMs) / 1000) / frameSeconds));
-  const midiFrames = [];
+  const frames = [];
 
   for (let offset = 0; offset + frameSize <= monoData.length; offset += hopSize) {
     const frame = monoData.subarray(offset, offset + frameSize);
-    const pitch = autoCorrelate(frame, sampleRate);
-    const midi = pitch ? frequencyToMidi(pitch.frequency) : null;
-    midiFrames.push({
+    const pitch = detectPitch(frame, sampleRate);
+    frames.push({
       time: offset / sampleRate,
-      midi,
+      pitch: pitch ? frequencyToFractionalMidi(pitch.frequency) : null,
     });
   }
 
-  const smoothed = midiFrames.map((frame, index) => {
-    if (!Number.isFinite(frame.midi)) return null;
-    const neighbors = [midiFrames[index - 1], frame, midiFrames[index + 1]]
-      .map((item) => (item && Number.isFinite(item.midi) ? item.midi : null))
-      .filter((value) => value !== null);
-    if (!neighbors.length) return null;
-    const mean = neighbors.reduce((sum, value) => sum + value, 0) / neighbors.length;
-    return Math.round(mean);
+  // Median-of-3 removes single-frame glitches at note boundaries. (The old mean of rounded
+  // MIDI values averaged two different notes into a third one, e.g. B3/G3 -> G#3.)
+  const smoothed = frames.map((frame, index) => {
+    if (frame.pitch === null) return null;
+    const before = frames[index - 1]?.pitch;
+    const after = frames[index + 1]?.pitch;
+    if (before == null || after == null) return frame.pitch;
+    return medianOf([before, frame.pitch, after]);
   });
 
   const rawEvents = [];
   let current = null;
-  for (let index = 0; index < smoothed.length; index += 1) {
-    const midi = smoothed[index];
-    const frameTime = midiFrames[index]?.time ?? (index * frameSeconds);
+  const closeCurrent = (endTime) => {
+    rawEvents.push({
+      midi: Math.round(medianOf(current.pitches)),
+      start: current.start,
+      end: endTime,
+      frames: current.pitches.length,
+    });
+    current = null;
+  };
 
-    if (!Number.isFinite(midi)) {
+  for (let index = 0; index < smoothed.length; index += 1) {
+    const pitch = smoothed[index];
+    const frameTime = frames[index].time;
+
+    if (pitch === null) {
       if (current) {
         current.silenceFrames += 1;
         if (current.silenceFrames >= 2) {
-          rawEvents.push({
-            midi: current.midi,
-            start: current.start,
-            end: frameTime,
-            frames: current.frames,
-          });
-          current = null;
+          closeCurrent(frameTime);
         }
       }
       continue;
     }
 
-    if (!current) {
-      current = {
-        midi,
-        start: frameTime,
-        frames: 1,
-        silenceFrames: 0,
-      };
-      continue;
+    if (current) {
+      const reference = medianOf(current.pitches.slice(-5));
+      if (Math.abs(pitch - reference) < AUDIO_TAB_SAME_NOTE_SEMITONES) {
+        current.pitches.push(pitch);
+        current.silenceFrames = 0;
+        continue;
+      }
+      closeCurrent(frameTime);
     }
 
-    if (Math.abs(midi - current.midi) <= 1) {
-      current.midi = Math.round((current.midi * current.frames + midi) / (current.frames + 1));
-      current.frames += 1;
-      current.silenceFrames = 0;
-      continue;
-    }
-
-    rawEvents.push({
-      midi: current.midi,
-      start: current.start,
-      end: frameTime,
-      frames: current.frames,
-    });
     current = {
-      midi,
+      pitches: [pitch],
       start: frameTime,
-      frames: 1,
       silenceFrames: 0,
     };
   }
 
   if (current) {
-    rawEvents.push({
-      midi: current.midi,
-      start: current.start,
-      end: monoData.length / sampleRate,
-      frames: current.frames,
-    });
+    closeCurrent(monoData.length / sampleRate);
   }
 
   const filtered = rawEvents
@@ -1961,69 +1962,90 @@ function withPitchHold(rawFrequency) {
   return null;
 }
 
-function autoCorrelate(buf, sampleRate) {
-  const rms = computeRms(buf);
-  if (rms < MIN_SIGNAL_RMS) return null;
+// McLeod Pitch Method (normalized square difference function, NSDF).
+// Unlike raw autocorrelation, the NSDF is normalized per lag, so it has no bias toward
+// short lags (raw ACF read low strings 5-12 cents sharp) and its peaks are directly
+// comparable: we take the first key maximum within MPM_PEAK_THRESHOLD of the highest one,
+// which avoids both harmonic (octave-up) and sub-harmonic (octave-down) errors.
+// Only lags for PITCH_MIN_HZ..PITCH_MAX_HZ (the guitar range) are evaluated.
+const pitchScratch = { x: new Float32Array(0), nsdf: new Float64Array(0) };
 
-  let r1 = 0;
-  let r2 = buf.length - 1;
-  const threshold = 0.2;
+function detectPitch(buf, sampleRate) {
+  const size = buf.length;
+  if (size < 4 || !Number.isFinite(sampleRate) || sampleRate <= 0) return null;
 
-  for (let i = 0; i < buf.length / 2; i += 1) {
-    if (Math.abs(buf[i]) < threshold) {
-      r1 = i;
-      break;
+  if (pitchScratch.x.length < size) pitchScratch.x = new Float32Array(size);
+  const x = pitchScratch.x;
+
+  let mean = 0;
+  for (let i = 0; i < size; i += 1) mean += buf[i];
+  mean /= size;
+
+  let energy = 0;
+  for (let i = 0; i < size; i += 1) {
+    const value = buf[i] - mean;
+    x[i] = value;
+    energy += value * value;
+  }
+  if (Math.sqrt(energy / size) < MIN_SIGNAL_RMS) return null;
+
+  const minLag = Math.max(2, Math.floor(sampleRate / PITCH_MAX_HZ));
+  const maxLag = Math.min(size - 2, Math.ceil(sampleRate / PITCH_MIN_HZ));
+  if (maxLag <= minLag) return null;
+  const lagCount = maxLag + 2;
+  if (pitchScratch.nsdf.length < lagCount) pitchScratch.nsdf = new Float64Array(lagCount);
+  const nsdf = pitchScratch.nsdf;
+
+  // m(tau) = sum(x[j]^2 + x[j+tau]^2) over the overlap, updated incrementally.
+  let m = 2 * energy;
+  for (let tau = 0; tau < lagCount; tau += 1) {
+    if (tau > 0) {
+      const head = x[tau - 1];
+      const tail = x[size - tau];
+      m -= head * head + tail * tail;
     }
+    let acf = 0;
+    const overlap = size - tau;
+    for (let j = 0; j < overlap; j += 1) acf += x[j] * x[j + tau];
+    nsdf[tau] = m > 1e-12 ? (2 * acf) / m : 0;
   }
 
-  for (let i = 1; i < buf.length / 2; i += 1) {
-    if (Math.abs(buf[buf.length - i]) < threshold) {
-      r2 = buf.length - i;
-      break;
+  // Key maxima: the highest point of each positive lobe after the lobe around lag 0.
+  let tau = 1;
+  while (tau < lagCount && nsdf[tau] > 0) tau += 1;
+  let highest = 0;
+  let lobeMax = -1;
+  const keyMaxima = [];
+  const pushKeyMax = (lag) => {
+    if (lag < minLag || lag > maxLag) return;
+    keyMaxima.push(lag);
+    if (nsdf[lag] > highest) highest = nsdf[lag];
+  };
+  for (; tau < lagCount - 1; tau += 1) {
+    if (nsdf[tau] > 0) {
+      if (lobeMax < 0 || nsdf[tau] > nsdf[lobeMax]) lobeMax = tau;
+    } else if (lobeMax >= 0) {
+      pushKeyMax(lobeMax);
+      lobeMax = -1;
     }
   }
+  if (lobeMax >= 0) pushKeyMax(lobeMax);
+  if (!keyMaxima.length || highest <= 0) return null;
 
-  const trimmed = buf.slice(r1, r2);
-  const c = new Float32Array(trimmed.length);
-
-  for (let i = 0; i < trimmed.length; i += 1) {
-    for (let j = 0; j < trimmed.length - i; j += 1) {
-      c[i] += trimmed[j] * trimmed[j + i];
-    }
-  }
-
-  let d = 0;
-  while (d + 1 < c.length && c[d] > c[d + 1]) d += 1;
-
-  let maxValue = -1;
-  let maxPos = -1;
-
-  for (let i = d; i < c.length; i += 1) {
-    if (c[i] > maxValue) {
-      maxValue = c[i];
-      maxPos = i;
-    }
-  }
-
-  if (maxPos <= 0 || maxPos >= c.length - 1) return null;
-
-  const x1 = c[maxPos - 1];
-  const x2 = c[maxPos];
-  const x3 = c[maxPos + 1];
-  const a = (x1 + x3 - 2 * x2) / 2;
-  const b = (x3 - x1) / 2;
-  const shift = a !== 0 ? -b / (2 * a) : 0;
-  const period = maxPos + shift;
-
-  if (!Number.isFinite(period) || period <= 0) return null;
-
-  const confidence = maxValue / (c[0] || 1);
-  if (confidence < MIN_CONFIDENCE) return null;
+  const chosen = keyMaxima.find((lag) => nsdf[lag] >= MPM_PEAK_THRESHOLD * highest);
+  const x1 = nsdf[chosen - 1];
+  const x2 = nsdf[chosen];
+  const x3 = nsdf[chosen + 1];
+  const denominator = x1 - 2 * x2 + x3;
+  const shift = denominator !== 0 ? (x1 - x3) / (2 * denominator) : 0;
+  const period = chosen + shift;
+  const clarity = x2 - ((x1 - x3) * shift) / 4;
+  if (!Number.isFinite(period) || period <= 0 || clarity < MIN_PITCH_CLARITY) return null;
 
   const frequency = sampleRate / period;
-  if (!Number.isFinite(frequency) || frequency < 60 || frequency > 1400) return null;
+  if (!Number.isFinite(frequency) || frequency < PITCH_MIN_HZ || frequency > PITCH_MAX_HZ) return null;
 
-  return { frequency, confidence };
+  return { frequency, confidence: clarity };
 }
 
 function peakDbNearFrequency(frequencyData, sampleRate, fftSize, frequency, radius = 1) {
@@ -3278,7 +3300,7 @@ function tick() {
   }
 
   const rms = computeRms(state.data);
-  const pitch = autoCorrelate(state.data, state.audioCtx.sampleRate);
+  const pitch = detectPitch(state.data, state.audioCtx.sampleRate);
   const liveFrequency = pitch?.frequency || null;
   const heldFrequency = withPitchHold(liveFrequency);
   const detectedFrequency = smoothFrequency(heldFrequency);
@@ -3561,6 +3583,6 @@ export {
   extractTabImportData,
   parseTabSystems,
   parseTabTextToPiece,
-  autoCorrelate,
+  detectPitch,
   detectMonophonicNotesFromAudio,
 };
