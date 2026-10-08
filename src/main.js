@@ -17,6 +17,7 @@ const HOLD_PITCH_MS = 200;
 const MAX_FRET_FOR_BEGINNER_TAB = 15;
 const START_HOTKEY = 'Space';
 const TUNER_VERY_CLOSE_CENTS = 5;
+const OCTAVE_FOLD_TOLERANCE_CENTS = 100;
 const DEFAULT_TAB_MS_PER_COLUMN = 120;
 const TIMED_HIT_WINDOW_MS = 140;
 const DEFAULT_COLUMNS_PER_BEAT = 4;
@@ -310,6 +311,22 @@ function midiToNoteName(midi) {
 
 function centsDifference(actualFreq, targetFreq) {
   return 1200 * Math.log2(actualFreq / targetFreq);
+}
+
+// Tuner deviation with octave errors folded away: if the detector locks onto a harmonic
+// (or sub-harmonic) that sits within OCTAVE_FOLD_TOLERANCE_CENTS of a whole octave from
+// the target, report the deviation from that octave instead of "1200 cents sharp".
+// Readings that are far from any octave keep their raw value so very slack/tight strings
+// still get the right tighten/loosen direction.
+function tunerCentsFromTarget(detectedFreq, targetFreq) {
+  const raw = centsDifference(detectedFreq, targetFreq);
+  const octaveShift = Math.round(raw / 1200);
+  if (octaveShift === 0) return { cents: raw, octaveShift: 0 };
+  const folded = raw - octaveShift * 1200;
+  if (Math.abs(folded) <= OCTAVE_FOLD_TOLERANCE_CENTS) {
+    return { cents: folded, octaveShift };
+  }
+  return { cents: raw, octaveShift: 0 };
 }
 
 function closenessLabel(centsAbs) {
@@ -2304,26 +2321,27 @@ function renderStandaloneTuner(detectedFrequency) {
     return;
   }
 
-  const cents = centsDifference(detectedFrequency, state.tunerTarget.freq);
+  const { cents, octaveShift } = tunerCentsFromTarget(detectedFrequency, state.tunerTarget.freq);
   const centsAbs = Math.abs(cents);
   const tunePercent = Math.round(pitchScoreForCents(centsAbs) * 100);
-  const isInTune = centsAbs < 0.5;
+  const isInTune = centsAbs <= TUNER_VERY_CLOSE_CENTS;
   const isSharp = !isInTune && cents > 0;
+  const octaveNote = octaveShift ? ` (heard ${octaveShift > 0 ? 'an octave up' : 'an octave down'})` : '';
 
   if (isInTune) {
     applyTunerTone('in');
     dom.tunerCloseness.textContent = 'IN TUNE';
-    dom.tunerCents.textContent = `${centsAbs.toFixed(1)} cents · in tune`;
+    dom.tunerCents.textContent = `${cents > 0 ? '+' : ''}${cents.toFixed(1)} cents · in tune${octaveNote}`;
     dom.tunerStatus.textContent = `${state.tunerTarget.note}: on target (${tunePercent}% in tune)`;
   } else if (isSharp) {
     applyTunerTone('sharp');
     dom.tunerCloseness.textContent = 'TOO SHARP';
-    dom.tunerCents.textContent = `${centsAbs.toFixed(1)} cents sharp · loosen string`;
+    dom.tunerCents.textContent = `${centsAbs.toFixed(1)} cents sharp · loosen string${octaveNote}`;
     dom.tunerStatus.textContent = `${state.tunerTarget.note}: too sharp - loosen string (${tunePercent}% in tune)`;
   } else {
     applyTunerTone('loose');
     dom.tunerCloseness.textContent = 'TOO FLAT';
-    dom.tunerCents.textContent = `${centsAbs.toFixed(1)} cents flat · tighten string`;
+    dom.tunerCents.textContent = `${centsAbs.toFixed(1)} cents flat · tighten string${octaveNote}`;
     dom.tunerStatus.textContent = `${state.tunerTarget.note}: too flat - tighten string (${tunePercent}% in tune)`;
   }
 
@@ -3440,6 +3458,7 @@ export {
   midiToFrequency,
   frequencyToMidi,
   centsDifference,
+  tunerCentsFromTarget,
   normalizePiece,
   parseCustomPieceInput,
   parseBpmFromText,
