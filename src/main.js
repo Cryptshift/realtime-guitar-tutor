@@ -118,7 +118,10 @@ const TUNING_SETS = {
   },
 };
 
-const dom = {
+// Populated by init() so this module can be imported (e.g. by unit tests) without a DOM.
+const dom = {};
+
+const queryDom = () => ({
   modeSelect: document.querySelector('#modeSelect'),
   modeHint: document.querySelector('#modeHint'),
   toggleTunerBtn: document.querySelector('#toggleTunerBtn'),
@@ -209,7 +212,7 @@ const dom = {
   nextTab: document.querySelector('#nextTab'),
   nextHint: document.querySelector('#nextHint'),
   nextDiagram: document.querySelector('#nextDiagram'),
-};
+});
 
 let state = {
   audioCtx: null,
@@ -3400,6 +3403,7 @@ function bindEvents() {
 }
 
 function init() {
+  Object.assign(dom, queryDom());
   populatePieceSelect();
   populateTuningSetSelect();
   setTuningSet(state.tunerSetKey, state.tunerTargetNote);
@@ -3425,4 +3429,24 @@ function init() {
   setAudioTabStatus('Upload a clean guitar recording to auto-generate beginner single-note tabs.');
 }
 
-init();
+if (typeof document !== 'undefined' && document.querySelector('#modeSelect')) {
+  init();
+}
+
+// Pure helpers exported for unit tests (see tests/).
+export {
+  noteNameToMidi,
+  midiToNoteName,
+  midiToFrequency,
+  frequencyToMidi,
+  centsDifference,
+  normalizePiece,
+  parseCustomPieceInput,
+  parseBpmFromText,
+  parseTuningFromText,
+  extractTabImportData,
+  parseTabSystems,
+  parseTabTextToPiece,
+  autoCorrelate,
+  detectMonophonicNotesFromAudio,
+};
