@@ -80,7 +80,8 @@ body {
   margin-bottom: 10px;
 }
 
-.controls label {
+.controls label,
+.controls .row-label {
   font-weight: 600;
 }
 
@@ -468,9 +469,27 @@ progress::-webkit-progress-value {
 
 .import-grid {
   display: grid;
-  grid-template-columns: 1fr 120px auto;
+  grid-template-columns: 1fr 140px auto;
+  align-items: end;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+label.field-label {
+  margin-bottom: 4px;
 }
 
 .import-grid input[type='url'],

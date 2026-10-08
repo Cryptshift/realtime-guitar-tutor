@@ -50,8 +50,17 @@
               <output id="guideToneHint">Off</output>
             </div>
             <div class="row">
-              <label for="micLevelFill">Mic Input</label>
-              <div class="mic-level" aria-label="Microphone input level">
+              <span id="micLevelLabel" class="row-label">Mic Input</span>
+              <div
+                id="micLevel"
+                class="mic-level"
+                role="meter"
+                aria-labelledby="micLevelLabel"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="0"
+                aria-valuetext="0%"
+              >
                 <span id="micLevelFill"></span>
               </div>
               <output id="micStatus">Idle</output>
@@ -165,20 +174,25 @@
             <h2>Custom Piece (JSON or ASCII Tab)</h2>
             <p>Paste piece JSON such as [{"note":"E4","start":0.0,"duration":0.5,"tab":{"string":1,"fret":0}}], or paste plain ASCII tab (6-line systems) and it will be converted.</p>
             <div class="import-grid">
-              <input
-                id="tabUrlInput"
-                type="url"
-                placeholder="Paste tab URL (Ultimate Guitar or similar)"
-              />
-              <input
-                id="msPerColumnInput"
-                type="number"
-                min="40"
-                max="500"
-                step="5"
-                value="120"
-                title="Milliseconds per tab column"
-              />
+              <label class="field">
+                <span class="field-label">Tab URL</span>
+                <input
+                  id="tabUrlInput"
+                  type="url"
+                  placeholder="Paste tab URL (Ultimate Guitar or similar)"
+                />
+              </label>
+              <label class="field">
+                <span class="field-label">ms per tab column</span>
+                <input
+                  id="msPerColumnInput"
+                  type="number"
+                  min="40"
+                  max="500"
+                  step="5"
+                  value="120"
+                />
+              </label>
               <button id="importTabBtn">Import From URL</button>
             </div>
             <div class="button-row">
@@ -197,16 +211,21 @@
             <progress id="importProgress" class="task-progress" max="100" value="0" hidden></progress>
             <h3>Generate Tabs From Audio</h3>
             <div class="import-grid">
-              <input id="audioTabInput" type="file" accept="audio/*" />
-              <input
-                id="audioTabMinMs"
-                type="number"
-                min="80"
-                max="800"
-                step="10"
-                value="130"
-                title="Minimum note length in ms"
-              />
+              <label class="field">
+                <span class="field-label">Guitar recording</span>
+                <input id="audioTabInput" type="file" accept="audio/*" />
+              </label>
+              <label class="field">
+                <span class="field-label">Min note length (ms)</span>
+                <input
+                  id="audioTabMinMs"
+                  type="number"
+                  min="80"
+                  max="800"
+                  step="10"
+                  value="130"
+                />
+              </label>
               <button id="generateAudioTabBtn">Generate From Audio</button>
             </div>
             <p id="audioTabStatus" class="sub">Upload a clean guitar recording to auto-generate beginner single-note tabs.</p>
@@ -214,6 +233,7 @@
             <p class="sub">
               Constraints: monophonic lead guitar works best for audio generation. Uncheck "Beginner simplify" above to preserve chords from imported tabs.
             </p>
+            <label class="field-label" for="customPiece">Piece JSON or ASCII tab</label>
             <textarea id="customPiece" rows="8"></textarea>
             <div class="button-row">
               <button id="loadCustomBtn">Load Custom Piece</button>

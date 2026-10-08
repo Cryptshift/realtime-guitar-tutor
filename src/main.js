@@ -211,6 +211,7 @@ const queryDom = () => ({
   generateAudioTabBtn: document.querySelector('#generateAudioTabBtn'),
   audioTabStatus: document.querySelector('#audioTabStatus'),
   audioTabProgress: document.querySelector('#audioTabProgress'),
+  micLevel: document.querySelector('#micLevel'),
   micLevelFill: document.querySelector('#micLevelFill'),
   micStatus: document.querySelector('#micStatus'),
   fretPlanNow: document.querySelector('#fretPlanNow'),
@@ -2480,7 +2481,7 @@ function stopAudio() {
   dom.tunerStartBtn.disabled = false;
   dom.tunerStopBtn.disabled = true;
   dom.micStatus.textContent = 'Stopped';
-  dom.micLevelFill.style.width = '0%';
+  setMicLevel(0);
   stopBackingTrack({ reset: false });
   renderStandaloneTuner(null);
 }
@@ -2506,9 +2507,19 @@ function restartPiece() {
   }
 }
 
+function setMicLevel(levelPercent) {
+  dom.micLevelFill.style.width = `${levelPercent}%`;
+  // Keep the meter's ARIA value in sync, in 5% steps to avoid per-frame attribute churn.
+  const announced = Math.round(levelPercent / 5) * 5;
+  if (dom.micLevel && dom.micLevel.getAttribute('aria-valuenow') !== String(announced)) {
+    dom.micLevel.setAttribute('aria-valuenow', String(announced));
+    dom.micLevel.setAttribute('aria-valuetext', `${announced}%`);
+  }
+}
+
 function renderMicStatus(rms, detectedFrequency) {
   const levelPercent = Math.min(100, Math.round((rms / MIC_LEVEL_MAX_RMS) * 100));
-  dom.micLevelFill.style.width = `${levelPercent}%`;
+  setMicLevel(levelPercent);
 
   if (!state.isRunning) {
     dom.micStatus.textContent = 'Idle';
@@ -3876,7 +3887,7 @@ function init() {
   dom.playTrackBtn.disabled = true;
   dom.stopTrackBtn.disabled = true;
   dom.micStatus.textContent = 'Idle';
-  dom.micLevelFill.style.width = '0%';
+  setMicLevel(0);
   renderTabs(null, 0);
   renderStandaloneTuner(null);
   setImportStatus('Import tab links into playable single-note timelines.');
