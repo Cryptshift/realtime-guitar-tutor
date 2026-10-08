@@ -1,10 +1,19 @@
 // Audio I/O: microphone start/stop, guide tone, backing track.
 import { FFT_SIZE } from './dsp/pitch.js';
-import { tick } from './loop.js';
+import { handleAnalysisFrame, renderFrame } from './loop.js';
 import { renderStandaloneTuner, setMicLevel } from './render/status.js';
-import { resetOnsets, resetPieceClock } from './scoring.js';
+import {
+  SMOOTHING_WINDOW,
+  SMOOTHING_WINDOW_MS,
+  resetOnsets,
+  resetPieceClock,
+} from './scoring.js';
 import { createEmptyStats, dom, state } from './state.js';
 import { formatClock } from './util.js';
+
+// Analysis frames: 2048-sample window every 256 samples (~5.3 ms at 48 kHz).
+const ANALYSIS_HOP_SIZE = 256;
+const FRAME_POOL_SIZE = 8;
 
 export function updateGuideToneHint() {
   if (!state.guideToneEnabled) {
@@ -236,6 +245,9 @@ export async function startAudio(listenMode = 'practice') {
 
   let stream = null;
   let audioCtx = null;
+  let worker = null;
+  let captureNode = null;
+  let silentSink = null;
   try {
     // Speech processing (echo cancellation, noise suppression, auto gain) treats sustained
     // instrument tones as noise and pumps the level, so ask for the raw signal.
@@ -251,16 +263,59 @@ export async function startAudio(listenMode = 'practice') {
 
     audioCtx = new AudioContext();
     await audioCtx.resume();
+    if (!audioCtx.audioWorklet || typeof Worker === 'undefined') {
+      throw new Error('this browser lacks AudioWorklet or Web Worker support');
+    }
+    // Capture/framing runs in an AudioWorklet; pitch + onset detection in a worker.
+    await audioCtx.audioWorklet.addModule(new URL('./audio/capture.worklet.js', import.meta.url));
     state.mediaStream = stream;
     state.audioCtx = audioCtx;
-    state.analyser = state.audioCtx.createAnalyser();
-    state.analyser.fftSize = FFT_SIZE;
+
+    const detector = state.instrument.detector || {};
+    const frameSize = detector.frameSize || FFT_SIZE;
+    const hopMs = (ANALYSIS_HOP_SIZE / audioCtx.sampleRate) * 1000;
+    state.smoothingFrames = Math.max(SMOOTHING_WINDOW, Math.round(SMOOTHING_WINDOW_MS / hopMs));
+
+    // Native FFT, read only when matching full chord shapes.
+    state.analyser = audioCtx.createAnalyser();
+    state.analyser.fftSize = frameSize;
     state.analyser.smoothingTimeConstant = 0.8;
-    state.data = new Float32Array(state.analyser.fftSize);
     state.frequencyData = new Float32Array(state.analyser.frequencyBinCount);
+
+    worker = new Worker(new URL('./audio/detector.worker.js', import.meta.url), { type: 'module' });
+    worker.onmessage = (event) => {
+      if (event.data?.type === 'analysis') handleAnalysisFrame(event.data);
+    };
+    const channel = new MessageChannel();
+    worker.postMessage({
+      type: 'init',
+      port: channel.port2,
+      sampleRate: audioCtx.sampleRate,
+      hopSize: ANALYSIS_HOP_SIZE,
+      range: { minHz: detector.minHz, maxHz: detector.maxHz },
+    }, [channel.port2]);
+
+    captureNode = new AudioWorkletNode(audioCtx, 'frame-capture', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [1],
+      channelCount: 1,
+      channelCountMode: 'explicit',
+      processorOptions: { frameSize, hopSize: ANALYSIS_HOP_SIZE, poolSize: FRAME_POOL_SIZE },
+    });
+    captureNode.port.postMessage({ type: 'connect', port: channel.port1 }, [channel.port1]);
+    // A muted path to the destination keeps the worklet in the rendered graph.
+    silentSink = audioCtx.createGain();
+    silentSink.gain.value = 0;
+    captureNode.connect(silentSink);
+    silentSink.connect(audioCtx.destination);
 
     state.source = state.audioCtx.createMediaStreamSource(state.mediaStream);
     state.source.connect(state.analyser);
+    state.source.connect(captureNode);
+    state.captureNode = captureNode;
+    state.silentSink = silentSink;
+    state.detectorWorker = worker;
     if (state.guideToneEnabled) {
       ensureGuideToneNodes();
     }
@@ -269,7 +324,7 @@ export async function startAudio(listenMode = 'practice') {
     state.frequencyHistory = [];
     state.lastDetectedFrequency = null;
     state.lastDetectedAtMs = 0;
-    state.onsetDetector.reset();
+    state.analysis = null;
     resetOnsets();
     const startedAtMs = performance.now();
     resetPieceClock(startedAtMs);
@@ -288,10 +343,16 @@ export async function startAudio(listenMode = 'practice') {
       syncBackingTrackToPracticeStart();
     }
 
-    tick();
+    renderFrame();
   } catch (error) {
     // Release anything acquired before the failure so the mic indicator turns off.
     stream?.getTracks().forEach((track) => track.stop());
+    worker?.terminate();
+    captureNode?.disconnect();
+    silentSink?.disconnect();
+    state.captureNode = null;
+    state.silentSink = null;
+    state.detectorWorker = null;
     if (audioCtx && audioCtx.state !== 'closed') {
       audioCtx.close().catch(() => {});
     }
@@ -300,7 +361,6 @@ export async function startAudio(listenMode = 'practice') {
     state.audioCtx = null;
     state.analyser = null;
     state.source = null;
-    state.data = null;
     state.frequencyData = null;
     state.isRunning = false;
     setListenButtonsDisabled(false);
@@ -320,6 +380,13 @@ export function stopAudio() {
 
   if (state.source) state.source.disconnect();
   if (state.analyser) state.analyser.disconnect();
+  state.captureNode?.disconnect();
+  state.silentSink?.disconnect();
+  state.detectorWorker?.terminate();
+  state.captureNode = null;
+  state.silentSink = null;
+  state.detectorWorker = null;
+  state.analysis = null;
   stopGuideToneNodes();
 
   if (state.mediaStream) {
@@ -334,7 +401,6 @@ export function stopAudio() {
   state.analyser = null;
   state.mediaStream = null;
   state.source = null;
-  state.data = null;
   state.frequencyData = null;
   state.frequencyHistory = [];
   state.lastDetectedFrequency = null;

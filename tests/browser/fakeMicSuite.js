@@ -27,6 +27,7 @@ export function installFakeMic(plan) {
     fake.ctx = ctx;
     const dest = ctx.createMediaStreamDestination();
     const t0 = ctx.currentTime + 0.03;
+    fake.pluckTimes = plan.map((pluck) => t0 + pluck.at);
     plan.forEach((pluck, index) => {
       const frequency = pluck.freq || 440 * 2 ** ((pluck.midi - 69) / 12);
       const at = t0 + pluck.at;

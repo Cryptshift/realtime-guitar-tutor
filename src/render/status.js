@@ -9,6 +9,7 @@ import {
   stepGroupNotesForTarget,
 } from '../scoring.js';
 import { dom, state } from '../state.js';
+import { setText } from '../util.js';
 
 export const MIC_LEVEL_MAX_RMS = 0.06;
 
@@ -16,6 +17,8 @@ export const TUNER_VERY_CLOSE_CENTS = 5;
 
 export function applyTunerTone(tone = 'neutral') {
   const toneClasses = ['tuner-tone-neutral', 'tuner-tone-in', 'tuner-tone-sharp', 'tuner-tone-loose'];
+  if (state.tunerTone === tone) return;
+  state.tunerTone = tone;
   [dom.tunerCloseness, dom.tunerCents, dom.tunerStatus].forEach((element) => {
     if (!element) return;
     element.classList.remove(...toneClasses);
@@ -23,8 +26,17 @@ export function applyTunerTone(tone = 'neutral') {
   });
 }
 
+function setValue(element, value) {
+  if (element && element.value !== value) {
+    element.value = value;
+  }
+}
+
 export function setMicLevel(levelPercent) {
-  dom.micLevelFill.style.width = `${levelPercent}%`;
+  const width = `${levelPercent}%`;
+  if (dom.micLevelFill.style.width !== width) {
+    dom.micLevelFill.style.width = width;
+  }
   // Keep the meter's ARIA value in sync, in 5% steps to avoid per-frame attribute churn.
   const announced = Math.round(levelPercent / 5) * 5;
   if (dom.micLevel && dom.micLevel.getAttribute('aria-valuenow') !== String(announced)) {
@@ -38,105 +50,105 @@ export function renderMicStatus(rms, detectedFrequency) {
   setMicLevel(levelPercent);
 
   if (!state.isRunning) {
-    dom.micStatus.textContent = 'Idle';
+    setText(dom.micStatus, 'Idle');
     return;
   }
 
   if (rms < MIN_SIGNAL_RMS) {
-    dom.micStatus.textContent = 'No signal';
+    setText(dom.micStatus, 'No signal');
     return;
   }
 
   if (performance.now() - state.lastOnsetAtMs < 150) {
-    dom.micStatus.textContent = 'Note start';
+    setText(dom.micStatus, 'Note start');
     return;
   }
 
   if (detectedFrequency) {
-    dom.micStatus.textContent = 'Pitch locked';
+    setText(dom.micStatus, 'Pitch locked');
     return;
   }
 
-  dom.micStatus.textContent = 'Signal detected';
+  setText(dom.micStatus, 'Signal detected');
 }
 
 export function renderDetected(frequency) {
   if (!frequency) {
     if (state.lastDisplayedDetectedFrequency) {
       const midi = frequencyToMidi(state.lastDisplayedDetectedFrequency);
-      dom.detectedNote.textContent = midiToNoteName(midi);
-      dom.detectedFreq.textContent = `${state.lastDisplayedDetectedFrequency.toFixed(1)} Hz (last)`;
+      setText(dom.detectedNote, midiToNoteName(midi));
+      setText(dom.detectedFreq, `${state.lastDisplayedDetectedFrequency.toFixed(1)} Hz (last)`);
     } else {
-      dom.detectedNote.textContent = '--';
-      dom.detectedFreq.textContent = 'No stable pitch';
+      setText(dom.detectedNote, '--');
+      setText(dom.detectedFreq, 'No stable pitch');
     }
     return;
   }
 
   state.lastDisplayedDetectedFrequency = frequency;
   const midi = frequencyToMidi(frequency);
-  dom.detectedNote.textContent = midiToNoteName(midi);
-  dom.detectedFreq.textContent = `${frequency.toFixed(1)} Hz`;
+  setText(dom.detectedNote, midiToNoteName(midi));
+  setText(dom.detectedFreq, `${frequency.toFixed(1)} Hz`);
 }
 
 export function renderTarget(target, shiftedElapsedSeconds) {
   if (state.practiceMode === 'step') {
     if (!target) {
-      dom.targetNote.textContent = '--';
-      dom.targetWindow.textContent = 'Piece complete';
+      setText(dom.targetNote, '--');
+      setText(dom.targetWindow, 'Piece complete');
       return;
     }
 
     const groupNotes = stepGroupNotesForTarget(target);
     const displayNotes = groupNotes.map((note) => note.note).join(' + ');
-    dom.targetNote.textContent = displayNotes || target.note;
+    setText(dom.targetNote, displayNotes || target.note);
     if (isChordStepMode() && groupNotes.length > 1) {
       const model = timelineModelForCurrentPiece(state.activePiece.notes);
       const currentShape = timelineActiveSegmentIndex(model.segments, target.start) + 1;
       const totalShapes = model.segments.length;
-      dom.targetWindow.textContent = `Shape ${currentShape}/${totalShapes} · Hit every note in this shape`;
+      setText(dom.targetWindow, `Shape ${currentShape}/${totalShapes} · Hit every note in this shape`);
     } else {
-      dom.targetWindow.textContent = `Step ${state.stepIndex + 1}/${state.activePiece.notes.length} · Play until correct`;
+      setText(dom.targetWindow, `Step ${state.stepIndex + 1}/${state.activePiece.notes.length} · Play until correct`);
     }
     return;
   }
 
   if (!target) {
-    dom.targetNote.textContent = '--';
+    setText(dom.targetNote, '--');
     if (shiftedElapsedSeconds > state.activePiece.totalDuration + 0.15) {
-      dom.targetWindow.textContent = 'Piece complete';
+      setText(dom.targetWindow, 'Piece complete');
     } else {
-      dom.targetWindow.textContent = 'Waiting for next note window';
+      setText(dom.targetWindow, 'Waiting for next note window');
     }
     return;
   }
 
-  dom.targetNote.textContent = target.note;
-  dom.targetWindow.textContent = `Pluck at ${target.start.toFixed(2)}s (±${Math.round(target.onsetWindow * 1000)} ms)`;
+  setText(dom.targetNote, target.note);
+  setText(dom.targetWindow, `Pluck at ${target.start.toFixed(2)}s (±${Math.round(target.onsetWindow * 1000)} ms)`);
 }
 
 export function renderCloseness(centsAbs, centsSigned, isTargetActive) {
   if (!isTargetActive) {
-    dom.closeness.textContent = 'Wait';
-    dom.centsOff.textContent = 'No active note window';
+    setText(dom.closeness, 'Wait');
+    setText(dom.centsOff, 'No active note window');
     return;
   }
 
   if (!Number.isFinite(centsAbs)) {
-    dom.closeness.textContent = '--';
-    dom.centsOff.textContent = 'Play the target tab note';
+    setText(dom.closeness, '--');
+    setText(dom.centsOff, 'Play the target tab note');
     return;
   }
 
   const label = closenessLabel(centsAbs);
-  dom.closeness.textContent = label;
-  dom.centsOff.textContent = `${centsSigned > 0 ? '+' : ''}${centsSigned.toFixed(1)} cents`;
+  setText(dom.closeness, label);
+  setText(dom.centsOff, `${centsSigned > 0 ? '+' : ''}${centsSigned.toFixed(1)} cents`);
 }
 
 export function renderProgress(noteCountHit, total, unplayableCount = 0) {
   const unplayableText = unplayableCount > 0 ? ` (${unplayableCount} unplayable skipped)` : '';
-  dom.progressText.textContent = `${noteCountHit} / ${total} notes hit${unplayableText}`;
-  dom.pieceProgress.value = total > 0 ? (noteCountHit / total) * 100 : 0;
+  setText(dom.progressText, `${noteCountHit} / ${total} notes hit${unplayableText}`);
+  setValue(dom.pieceProgress, total > 0 ? (noteCountHit / total) * 100 : 0);
 }
 
 export function renderPieceProgress() {
@@ -160,39 +172,39 @@ export function renderScores(mode = state.practiceMode) {
     ? Math.round((pitchPct + timingPct) / 2)
     : pitchPct;
 
-  dom.pitchScore.textContent = `${pitchPct}%`;
-  dom.timingScore.textContent = mode === 'timed' ? `${timingPct}%` : 'N/A';
-  dom.overallScore.textContent = `${overall}%`;
+  setText(dom.pitchScore, `${pitchPct}%`);
+  setText(dom.timingScore, mode === 'timed' ? `${timingPct}%` : 'N/A');
+  setText(dom.overallScore, `${overall}%`);
 }
 
 export function renderStandaloneTuner(detectedFrequency) {
   if (!state.tunerTarget) {
     applyTunerTone('neutral');
-    dom.tunerTargetDisplay.textContent = '--';
-    dom.tunerCloseness.textContent = '--';
-    dom.tunerCents.textContent = 'Select a target note';
-    dom.tunerStatus.textContent = 'Choose a tuning set and target note.';
-    dom.tunerProgress.value = 0;
+    setText(dom.tunerTargetDisplay, '--');
+    setText(dom.tunerCloseness, '--');
+    setText(dom.tunerCents, 'Select a target note');
+    setText(dom.tunerStatus, 'Choose a tuning set and target note.');
+    setValue(dom.tunerProgress, 0);
     return;
   }
 
-  dom.tunerTargetDisplay.textContent = state.tunerTarget.note;
+  setText(dom.tunerTargetDisplay, state.tunerTarget.note);
 
   if (!state.isRunning) {
     applyTunerTone('neutral');
-    dom.tunerCloseness.textContent = '--';
-    dom.tunerCents.textContent = '0.0 cents';
-    dom.tunerStatus.textContent = 'Press Start Listening to tune this note.';
-    dom.tunerProgress.value = 0;
+    setText(dom.tunerCloseness, '--');
+    setText(dom.tunerCents, '0.0 cents');
+    setText(dom.tunerStatus, 'Press Start Listening to tune this note.');
+    setValue(dom.tunerProgress, 0);
     return;
   }
 
   if (!detectedFrequency) {
     applyTunerTone('neutral');
-    dom.tunerCloseness.textContent = '--';
-    dom.tunerCents.textContent = 'Play the target note';
-    dom.tunerStatus.textContent = `Listening for ${state.tunerTarget.note}...`;
-    dom.tunerProgress.value = 0;
+    setText(dom.tunerCloseness, '--');
+    setText(dom.tunerCents, 'Play the target note');
+    setText(dom.tunerStatus, `Listening for ${state.tunerTarget.note}...`);
+    setValue(dom.tunerProgress, 0);
     return;
   }
 
@@ -205,26 +217,39 @@ export function renderStandaloneTuner(detectedFrequency) {
 
   if (isInTune) {
     applyTunerTone('in');
-    dom.tunerCloseness.textContent = 'IN TUNE';
-    dom.tunerCents.textContent = `${cents > 0 ? '+' : ''}${cents.toFixed(1)} cents · in tune${octaveNote}`;
-    dom.tunerStatus.textContent = `${state.tunerTarget.note}: on target (${tunePercent}% in tune)`;
+    setText(dom.tunerCloseness, 'IN TUNE');
+    setText(dom.tunerCents, `${cents > 0 ? '+' : ''}${cents.toFixed(1)} cents · in tune${octaveNote}`);
+    setText(dom.tunerStatus, `${state.tunerTarget.note}: on target (${tunePercent}% in tune)`);
   } else if (isSharp) {
     applyTunerTone('sharp');
-    dom.tunerCloseness.textContent = 'TOO SHARP';
-    dom.tunerCents.textContent = `${centsAbs.toFixed(1)} cents sharp · loosen string${octaveNote}`;
-    dom.tunerStatus.textContent = `${state.tunerTarget.note}: too sharp - loosen string (${tunePercent}% in tune)`;
+    setText(dom.tunerCloseness, 'TOO SHARP');
+    setText(dom.tunerCents, `${centsAbs.toFixed(1)} cents sharp · loosen string${octaveNote}`);
+    setText(dom.tunerStatus, `${state.tunerTarget.note}: too sharp - loosen string (${tunePercent}% in tune)`);
   } else {
     applyTunerTone('loose');
-    dom.tunerCloseness.textContent = 'TOO FLAT';
-    dom.tunerCents.textContent = `${centsAbs.toFixed(1)} cents flat · tighten string${octaveNote}`;
-    dom.tunerStatus.textContent = `${state.tunerTarget.note}: too flat - tighten string (${tunePercent}% in tune)`;
+    setText(dom.tunerCloseness, 'TOO FLAT');
+    setText(dom.tunerCents, `${centsAbs.toFixed(1)} cents flat · tighten string${octaveNote}`);
+    setText(dom.tunerStatus, `${state.tunerTarget.note}: too flat - tighten string (${tunePercent}% in tune)`);
   }
 
-  dom.tunerProgress.value = tunePercent;
+  setValue(dom.tunerProgress, tunePercent);
 }
 
 export function nextUpcomingNote(shiftedElapsedSeconds) {
   const notes = state.activePiece?.notes || [];
   if (!notes.length) return null;
   return notes.find((note) => note.start > shiftedElapsedSeconds) || null;
+}
+
+// Shows the latest scoring feedback (closeness, hint) plus progress and scores.
+export function renderFeedback() {
+  const feedback = state.feedback;
+  if (feedback) {
+    renderCloseness(feedback.centsAbs, feedback.cents, feedback.active);
+    if (feedback.hint) {
+      setText(dom.centsOff, feedback.hint);
+    }
+  }
+  renderPieceProgress();
+  renderScores(state.practiceMode);
 }

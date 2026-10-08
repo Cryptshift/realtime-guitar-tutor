@@ -16,3 +16,10 @@ export function medianOf(values) {
 export function clamp01(value) {
   return Math.max(0, Math.min(1, value));
 }
+
+// Writes text only when it changed, so per-frame rendering doesn't churn the DOM.
+export function setText(element, text) {
+  if (element && element.textContent !== text) {
+    element.textContent = text;
+  }
+}

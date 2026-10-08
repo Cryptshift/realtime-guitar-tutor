@@ -2,7 +2,7 @@
 import { chordGroupBoundsAtIndex } from '../piece.js';
 import { chordGroupForNote } from '../scoring.js';
 import { dom, state } from '../state.js';
-import { clamp01, formatClock } from '../util.js';
+import { clamp01, formatClock, setText } from '../util.js';
 
 export function resetTimelineCaches() {
   state.timelineCache = null;
@@ -153,7 +153,7 @@ export function renderTimelineTrack(segments, totalDuration, activeSegmentIndex,
 
   const signature = `${state.timelineCache?.key || 'none'}|${segments.length}`;
   if (!state.timelineDomCache || state.timelineDomCache.signature !== signature) {
-    dom.fretTimeline.textContent = '';
+    dom.fretTimeline.replaceChildren();
     const track = document.createElement('div');
     track.className = 'fret-timeline-track';
 
@@ -194,10 +194,10 @@ export function renderTimelineTrack(segments, totalDuration, activeSegmentIndex,
 
 export function renderFretPlan(notes, currentIndex, nextIndex, shiftedElapsedSeconds) {
   if (!notes.length) {
-    dom.fretPlanNow.textContent = '--';
-    dom.fretPlanHint.textContent = 'No playable note map';
+    setText(dom.fretPlanNow, '--');
+    setText(dom.fretPlanHint, 'No playable note map');
     if (dom.fretTimelineMeta) dom.fretTimelineMeta.textContent = 'No timeline available';
-    if (dom.fretTimeline) dom.fretTimeline.textContent = '';
+    if (dom.fretTimeline) dom.fretTimeline.replaceChildren();
     return;
   }
 
@@ -211,13 +211,13 @@ export function renderFretPlan(notes, currentIndex, nextIndex, shiftedElapsedSec
     : model.segments[0] || null;
 
   if (activeSegment) {
-    dom.fretPlanNow.textContent = activeSegment.label;
-    dom.fretPlanHint.textContent = nextSegment
+    setText(dom.fretPlanNow, activeSegment.label);
+    setText(dom.fretPlanHint, nextSegment
       ? `Next change at ${formatClock(nextSegment.start)}`
-      : 'Last fret position of the piece';
+      : 'Last fret position of the piece');
   } else {
-    dom.fretPlanNow.textContent = '--';
-    dom.fretPlanHint.textContent = `First change at ${formatClock(model.segments[0].start)}`;
+    setText(dom.fretPlanNow, '--');
+    setText(dom.fretPlanHint, `First change at ${formatClock(model.segments[0].start)}`);
   }
 
   const stepInfo = Number.isInteger(currentIndex) && currentIndex >= 0
@@ -228,7 +228,7 @@ export function renderFretPlan(notes, currentIndex, nextIndex, shiftedElapsedSec
         : 'Piece complete'
     );
   if (dom.fretTimelineMeta) {
-    dom.fretTimelineMeta.textContent = `${stepInfo} · ${formatClock(timelineTime)} / ${formatClock(model.totalDuration)}`;
+    setText(dom.fretTimelineMeta, `${stepInfo} · ${formatClock(timelineTime)} / ${formatClock(model.totalDuration)}`);
   }
 
   renderTimelineTrack(model.segments, model.totalDuration, activeSegmentIndex, timelineTime);

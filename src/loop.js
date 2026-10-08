@@ -1,9 +1,10 @@
-// Per-frame listening loop: read audio, detect, score, render.
+// Listening loop. Detection runs off the main thread (capture worklet -> detector worker);
+// this module consumes the worker's per-frame results for scoring and renders the UI
+// once per display frame.
 import { renderGuideTone } from './audioEngine.js';
-import { computeRms, detectPitch } from './dsp/pitch.js';
-import { frequencyToFractionalMidi } from './music.js';
 import {
   renderDetected,
+  renderFeedback,
   renderMicStatus,
   renderStandaloneTuner,
   renderTarget,
@@ -13,6 +14,8 @@ import { renderTabs } from './render/tabs.js';
 import {
   MAX_SCORING_FRAME_DELTA_MS,
   findTargetNoteAt,
+  isChordStepMode,
+  latencyOffsetSeconds,
   registerOnset,
   scoreFrame,
   skipEmptyStepNotes,
@@ -20,74 +23,91 @@ import {
   withPitchHold,
 } from './scoring.js';
 import { dom, state } from './state.js';
+import { setText } from './util.js';
 
-export function tick() {
-  if (!state.isRunning || !state.analyser || !state.data) return;
+// AudioContext time (s) -> performance.now() time (ms), using the context's clock now.
+function contextTimeToPerfMs(contextTime) {
+  return performance.now() - (state.audioCtx.currentTime - contextTime) * 1000;
+}
+
+function currentTargetNote(shiftedElapsedSeconds) {
+  return state.practiceMode === 'step'
+    ? (state.activePiece.notes[state.stepIndex] || null)
+    : findTargetNoteAt(shiftedElapsedSeconds, state.activePiece);
+}
+
+// One analysis result from the detector worker (every hop, ~5 ms): onset bookkeeping,
+// pitch smoothing and scoring. No DOM work here.
+export function handleAnalysisFrame(result) {
+  if (!state.isRunning || !state.audioCtx) return;
+
+  const frameMs = contextTimeToPerfMs(result.endTime);
+  if (!state.lastTickAtMs) {
+    state.lastTickAtMs = frameMs;
+  }
+  const frameDeltaMs = Math.max(0, Math.min(MAX_SCORING_FRAME_DELTA_MS, frameMs - state.lastTickAtMs));
+  state.lastTickAtMs = frameMs;
+
+  const liveFrequency = result.frequency || null;
+  if (result.onsetTime !== null) {
+    registerOnset(contextTimeToPerfMs(result.onsetTime));
+  }
+  const detectedFrequency = smoothFrequency(withPitchHold(liveFrequency));
+  state.analysis = { rms: result.rms, liveFrequency, detectedFrequency };
+
+  if (state.listenMode === 'tuner') return;
+
+  const shiftedElapsedSeconds = state.pieceClock.secondsAt(frameMs) + latencyOffsetSeconds();
+  skipEmptyStepNotes();
+  const targetNote = currentTargetNote(shiftedElapsedSeconds);
+
+  // The spectrum (native FFT) is only needed to match full chord shapes.
+  const needsSpectrum = Boolean(isChordStepMode() && state.analyser && state.frequencyData);
+  if (needsSpectrum) {
+    state.analyser.getFloatFrequencyData(state.frequencyData);
+  }
+
+  scoreFrame({
+    detectedFrequency: liveFrequency,
+    hasLivePitch: Boolean(liveFrequency),
+    frequencyData: needsSpectrum ? state.frequencyData : null,
+    sampleRate: state.audioCtx.sampleRate,
+    fftSize: state.analyser?.fftSize,
+    frameDeltaMs,
+    targetNote,
+    shiftedElapsedSeconds,
+  });
+}
+
+// Display-rate render (requestAnimationFrame). Render helpers only touch the DOM when a
+// value actually changed.
+export function renderFrame() {
+  if (!state.isRunning) return;
   if (state.audioCtx?.state === 'suspended') {
     state.audioCtx.resume();
   }
 
   const nowMs = performance.now();
-  if (!state.lastTickAtMs) {
-    state.lastTickAtMs = nowMs;
-  }
-  const frameDeltaMs = Math.max(0, Math.min(MAX_SCORING_FRAME_DELTA_MS, nowMs - state.lastTickAtMs));
-  state.lastTickAtMs = nowMs;
-
-  const elapsedSeconds = state.pieceClock.secondsAt(nowMs);
-  const offsetMs = state.practiceMode === 'timed' ? Number(dom.latencyOffset.value) : 0;
-  const shiftedElapsedSeconds = elapsedSeconds + offsetMs / 1000;
-
-  state.analyser.getFloatTimeDomainData(state.data);
-  if (state.frequencyData) {
-    state.analyser.getFloatFrequencyData(state.frequencyData);
-  }
-
-  const rms = computeRms(state.data);
-  const pitch = detectPitch(state.data, state.audioCtx.sampleRate, state.instrument.detector);
-  const liveFrequency = pitch?.frequency || null;
-  const onsetMs = state.onsetDetector.update({
-    rms,
-    pitchMidi: liveFrequency ? frequencyToFractionalMidi(liveFrequency) : null,
-    nowMs,
-  });
-  if (onsetMs !== null) {
-    registerOnset(onsetMs);
-  }
-  const heldFrequency = withPitchHold(liveFrequency);
-  const detectedFrequency = smoothFrequency(heldFrequency);
-  skipEmptyStepNotes();
-  const targetNote = state.practiceMode === 'step'
-    ? (state.activePiece.notes[state.stepIndex] || null)
-    : findTargetNoteAt(shiftedElapsedSeconds, state.activePiece);
+  const shiftedElapsedSeconds = state.pieceClock.secondsAt(nowMs) + latencyOffsetSeconds();
+  const targetNote = currentTargetNote(shiftedElapsedSeconds);
   renderGuideTone(targetNote);
 
-  renderMicStatus(rms, liveFrequency);
-  renderDetected(detectedFrequency);
-  renderStandaloneTuner(detectedFrequency);
+  const analysis = state.analysis || { rms: 0, liveFrequency: null, detectedFrequency: null };
+  renderMicStatus(analysis.rms, analysis.liveFrequency);
+  renderDetected(analysis.detectedFrequency);
+  renderStandaloneTuner(analysis.detectedFrequency);
   renderInstrumentPanel(targetNote, shiftedElapsedSeconds);
 
   if (state.listenMode === 'tuner') {
-    dom.targetNote.textContent = '--';
-    dom.targetWindow.textContent = 'Song tracking paused (tuner listening)';
-    dom.closeness.textContent = '--';
-    dom.centsOff.textContent = 'Use standalone tuner on the right';
-    state.rafId = requestAnimationFrame(tick);
-    return;
+    setText(dom.targetNote, '--');
+    setText(dom.targetWindow, 'Song tracking paused (tuner listening)');
+    setText(dom.closeness, '--');
+    setText(dom.centsOff, 'Use standalone tuner on the right');
+  } else {
+    renderTarget(targetNote, shiftedElapsedSeconds);
+    renderTabs(targetNote, shiftedElapsedSeconds);
+    renderFeedback();
   }
 
-  renderTarget(targetNote, shiftedElapsedSeconds);
-  renderTabs(targetNote, shiftedElapsedSeconds);
-  scoreFrame({
-    detectedFrequency: liveFrequency,
-    hasLivePitch: Boolean(liveFrequency),
-    frequencyData: state.frequencyData,
-    sampleRate: state.audioCtx.sampleRate,
-    fftSize: state.analyser.fftSize,
-    frameDeltaMs,
-    targetNote,
-    shiftedElapsedSeconds,
-  });
-
-  state.rafId = requestAnimationFrame(tick);
+  state.rafId = requestAnimationFrame(renderFrame);
 }

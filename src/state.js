@@ -1,6 +1,5 @@
 // Shared mutable app state and the DOM element registry (filled by init()).
 import { createPieceClock } from './clock.js';
-import { createOnsetDetector } from './dsp/onset.js';
 import { getInstrument } from './instruments/index.js';
 import { presetPieces } from './piece.js';
 
@@ -109,13 +108,19 @@ export const state = {
   analyser: null,
   mediaStream: null,
   source: null,
-  data: null,
   frequencyData: null,
   isRunning: false,
   isStarting: false,
+  captureNode: null,
+  silentSink: null,
+  detectorWorker: null,
+  analysis: null,
+  feedback: { centsAbs: Number.NaN, cents: 0, active: false, hint: null },
+  latencyOffsetMs: 0,
+  smoothingFrames: 5,
+  tunerTone: null,
   rafId: null,
   pieceClock: createPieceClock(),
-  onsetDetector: createOnsetDetector(),
   onsets: [],
   onsetSeq: 0,
   stepArmedOnsetSeq: 0,

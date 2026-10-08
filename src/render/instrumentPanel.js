@@ -9,12 +9,13 @@ import {
   stepGroupNotesForTarget,
 } from '../scoring.js';
 import { dom, state } from '../state.js';
+import { setText } from '../util.js';
 
 function showPanelTexts({ target, hint, legend, next }) {
-  dom.fingeringTarget.textContent = target;
-  dom.fingeringHint.textContent = hint;
-  dom.fingeringLegend.textContent = legend;
-  dom.fingeringNext.textContent = `Next: ${next}`;
+  setText(dom.fingeringTarget, target);
+  setText(dom.fingeringHint, hint);
+  setText(dom.fingeringLegend, legend);
+  setText(dom.fingeringNext, `Next: ${next}`);
 }
 
 export function renderInstrumentPanel(targetNote, shiftedElapsedSeconds) {

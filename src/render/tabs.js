@@ -3,13 +3,14 @@ import { CHORD_GROUP_EPSILON_SECONDS } from '../piece.js';
 import { renderFretPlan } from './timeline.js';
 import { chordGroupForNote } from '../scoring.js';
 import { dom, state } from '../state.js';
+import { setText } from '../util.js';
 
 export function renderTabSlot({ tabEl, hintEl, diagramEl }, note, emptyMessage) {
   const group = chordGroupForNote(note);
   const { summary, hint, diagram } = state.instrument.describeSlot(note, group, emptyMessage);
-  tabEl.textContent = summary;
-  hintEl.textContent = hint;
-  diagramEl.textContent = diagram;
+  setText(tabEl, summary);
+  setText(hintEl, hint);
+  setText(diagramEl, diagram);
 }
 
 export function tabIndicesAt(shiftedElapsedSeconds) {

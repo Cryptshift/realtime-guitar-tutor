@@ -120,6 +120,7 @@ export function bindEvents() {
   });
 
   dom.latencyOffset.addEventListener('input', () => {
+    state.latencyOffsetMs = Number(dom.latencyOffset.value) || 0;
     dom.latencyOffsetValue.textContent = `${dom.latencyOffset.value} ms`;
   });
 
@@ -148,6 +149,7 @@ export function bindEvents() {
 
 export function init() {
   Object.assign(dom, queryDom());
+  state.latencyOffsetMs = Number(dom.latencyOffset.value) || 0;
   populatePieceSelect();
   populateTuningSetSelect();
   setTuningSet(state.tunerSetKey, state.tunerTargetNote);

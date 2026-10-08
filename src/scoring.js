@@ -7,7 +7,6 @@ import {
   clampBpm,
   isStepNoteEmptyOrUnmapped,
 } from './piece.js';
-import { renderCloseness, renderPieceProgress, renderScores } from './render/status.js';
 import { dom, state } from './state.js';
 
 export const MAX_CENTS_FOR_PERFECT = 12;
@@ -24,7 +23,10 @@ export const TIMED_MIN_HIT_HOLD_MS = 140;
 
 export const MAX_SCORING_FRAME_DELTA_MS = 80;
 
+// Median window for the displayed pitch, in frames at ~60 frames/s (~83 ms).
 export const SMOOTHING_WINDOW = 5;
+
+export const SMOOTHING_WINDOW_MS = 83;
 
 export const HOLD_PITCH_MS = 200;
 
@@ -96,6 +98,15 @@ export function findTargetNoteAt(shiftedElapsedSeconds, piece) {
   return unhitActive || activeNotes[0];
 }
 
+// Latest scoring feedback; scoreFrame runs per analysis frame and the render loop shows it.
+export function setFeedback(centsAbs, cents, active) {
+  state.feedback = { centsAbs, cents, active, hint: null };
+}
+
+export function resetFeedback() {
+  setFeedback(Number.NaN, 0, false);
+}
+
 export function smoothFrequency(frequency) {
   if (!frequency) {
     state.frequencyHistory = [];
@@ -103,7 +114,7 @@ export function smoothFrequency(frequency) {
   }
 
   state.frequencyHistory.push(frequency);
-  if (state.frequencyHistory.length > SMOOTHING_WINDOW) {
+  if (state.frequencyHistory.length > (state.smoothingFrames || SMOOTHING_WINDOW)) {
     state.frequencyHistory.shift();
   }
 
@@ -133,7 +144,7 @@ export function withPitchHold(rawFrequency) {
 }
 
 export function latencyOffsetSeconds() {
-  return state.practiceMode === 'timed' ? Number(dom.latencyOffset.value) / 1000 : 0;
+  return state.practiceMode === 'timed' ? state.latencyOffsetMs / 1000 : 0;
 }
 
 export function registerOnset(atMs) {
@@ -248,9 +259,7 @@ export function scoreFrame({
   shiftedElapsedSeconds,
 }) {
   if (!targetNote) {
-    renderCloseness(Number.NaN, 0, false);
-    renderPieceProgress();
-    renderScores(state.practiceMode);
+    setFeedback(Number.NaN, 0, false);
     return;
   }
 
@@ -261,8 +270,6 @@ export function scoreFrame({
     if (endIndex >= state.stepIndex) {
       advanceStepTo(endIndex + 1);
     }
-    renderPieceProgress();
-    renderScores(state.practiceMode);
     return;
   }
 
@@ -295,10 +302,8 @@ export function scoreFrame({
   const hasFullChordMatch = canUseChordSpectrum && chordSpectrum.matched.length >= activeCandidates.length;
 
   if ((!hasLivePitch || !detectedFrequency) && !hasFullChordMatch) {
-    renderCloseness(Number.NaN, 0, true);
+    setFeedback(Number.NaN, 0, true);
     resetHitCandidates(activeCandidates);
-    renderPieceProgress();
-    renderScores(state.practiceMode);
     return;
   }
 
@@ -327,10 +332,8 @@ export function scoreFrame({
   const isTimed = state.practiceMode === 'timed';
   if (isTimed && state.stats.notesHit.has(targetNote.index)) {
     // Already counted; keep pitch feedback while it rings but don't score it twice.
-    renderCloseness(centsAbs, cents, true);
-    dom.centsOff.textContent = `Hit · ${formatTimingOffset(state.lastTimingMs)}`;
-    renderPieceProgress();
-    renderScores(state.practiceMode);
+    setFeedback(centsAbs, cents, true);
+    state.feedback.hint = `Hit · ${formatTimingOffset(state.lastTimingMs)}`;
     return;
   }
 
@@ -409,10 +412,8 @@ export function scoreFrame({
     resetHitCandidates(activeCandidates);
   }
 
-  renderCloseness(centsAbs, cents, true);
+  setFeedback(centsAbs, cents, true);
   if (holdHint) {
-    dom.centsOff.textContent = holdHint;
+    state.feedback.hint = holdHint;
   }
-  renderPieceProgress();
-  renderScores(state.practiceMode);
 }

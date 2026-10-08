@@ -14,6 +14,7 @@ import { resetTimelineCaches } from './render/timeline.js';
 import {
   isChordStepMode,
   pieceClockScale,
+  resetFeedback,
   resetOnsets,
   resetPieceClock,
   skipEmptyStepNotes,
@@ -198,6 +199,7 @@ export function restartPiece() {
   state.lastDetectedAtMs = 0;
   state.stepIndex = 0;
   resetOnsets();
+  resetFeedback();
   skipEmptyStepNotes();
   const restartedAtMs = performance.now();
   resetPieceClock(restartedAtMs);
