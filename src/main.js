@@ -225,7 +225,7 @@ let state = {
   isRunning: false,
   isStarting: false,
   rafId: null,
-  startTimestamp: 0,
+  pieceClock: createPieceClock(),
   listenMode: 'practice',
   practiceMode: 'timed',
   stepIndex: 0,
@@ -679,9 +679,42 @@ function syncBpmSliderWithPiece(piece) {
   dom.bpmValue.textContent = `${baseBpm} BPM`;
 }
 
+// Maps wall-clock time to piece time. Changing the tempo re-anchors the clock at the
+// current piece position, so moving the BPM slider mid-play changes the speed from
+// here on instead of jumping the playhead (elapsed * newScale).
+function createPieceClock(nowMs = 0, scale = 1) {
+  let anchorMs = nowMs;
+  let anchorSeconds = 0;
+  let currentScale = scale;
+  return {
+    reset(atMs, nextScale = currentScale) {
+      anchorMs = atMs;
+      anchorSeconds = 0;
+      currentScale = nextScale;
+    },
+    secondsAt(atMs) {
+      return anchorSeconds + ((atMs - anchorMs) / 1000) * currentScale;
+    },
+    setScale(atMs, nextScale) {
+      anchorSeconds = this.secondsAt(atMs);
+      anchorMs = atMs;
+      currentScale = nextScale;
+    },
+  };
+}
+
+function pieceClockScale() {
+  return state.practiceMode === 'timed' ? getBpmScale() : 1;
+}
+
+function resetPieceClock(atMs = performance.now()) {
+  state.pieceClock.reset(atMs, pieceClockScale());
+}
+
 function setActiveBpm(nextBpm) {
   const clamped = clampBpm(nextBpm);
   state.activeBpm = clamped;
+  state.pieceClock.setScale(performance.now(), pieceClockScale());
   dom.bpmSlider.value = String(clamped);
   dom.bpmValue.textContent = `${clamped} BPM`;
 }
@@ -2105,8 +2138,9 @@ async function startAudio(listenMode = 'practice') {
     state.frequencyHistory = [];
     state.lastDetectedFrequency = null;
     state.lastDetectedAtMs = 0;
-    state.startTimestamp = performance.now();
-    state.lastTickAtMs = state.startTimestamp;
+    const startedAtMs = performance.now();
+    resetPieceClock(startedAtMs);
+    state.lastTickAtMs = startedAtMs;
     state.listenMode = listenMode === 'tuner' ? 'tuner' : 'practice';
     state.isRunning = true;
 
@@ -2193,8 +2227,9 @@ function restartPiece() {
   state.lastDetectedAtMs = 0;
   state.stepIndex = 0;
   skipEmptyStepNotes();
-  state.startTimestamp = performance.now();
-  state.lastTickAtMs = state.startTimestamp;
+  const restartedAtMs = performance.now();
+  resetPieceClock(restartedAtMs);
+  state.lastTickAtMs = restartedAtMs;
   renderPieceProgress();
   renderScores(state.practiceMode);
   renderCloseness(Number.NaN, 0, false);
@@ -3233,9 +3268,7 @@ function tick() {
   const frameDeltaMs = Math.max(0, Math.min(MAX_SCORING_FRAME_DELTA_MS, nowMs - state.lastTickAtMs));
   state.lastTickAtMs = nowMs;
 
-  const rawElapsedSeconds = (nowMs - state.startTimestamp) / 1000;
-  const tempoScale = state.practiceMode === 'timed' ? getBpmScale() : 1;
-  const elapsedSeconds = rawElapsedSeconds * tempoScale;
+  const elapsedSeconds = state.pieceClock.secondsAt(nowMs);
   const offsetMs = state.practiceMode === 'timed' ? Number(dom.latencyOffset.value) : 0;
   const shiftedElapsedSeconds = elapsedSeconds + offsetMs / 1000;
 
@@ -3520,6 +3553,7 @@ export {
   canonicalNoteName,
   centsDifference,
   tunerCentsFromTarget,
+  createPieceClock,
   normalizePiece,
   parseCustomPieceInput,
   parseBpmFromText,
