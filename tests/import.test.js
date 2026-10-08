@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseBpmFromText } from '../src/main.js';
+import { parseBpmFromText } from '../src/import/metadata.js';
 
 describe('parseBpmFromText', () => {
   it('reads plain, quoted and escaped JSON bpm fields', () => {

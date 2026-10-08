@@ -1,12 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import {
-  extractTabImportData,
-  parseCustomPieceInput,
-  parseTabLine,
-  parseTabSystems,
-  parseTabTextToPiece,
-} from '../src/main.js';
+import { extractTabImportData } from '../src/instruments/guitar/pageImport.js';
+import { parseTabLine, parseTabSystems, parseTabTextToPiece } from '../src/instruments/guitar/tabParser.js';
+import { parseCustomPieceInput } from '../src/piece.js';
 
 const STANDARD = [
   'e|-----0-----|',

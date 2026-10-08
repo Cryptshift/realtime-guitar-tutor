@@ -6,8 +6,8 @@ import {
   midiToFrequency,
   midiToNoteName,
   noteNameToMidi,
-  normalizePiece,
-} from '../src/main.js';
+} from '../src/music.js';
+import { normalizePiece } from '../src/piece.js';
 
 describe('note-name helpers', () => {
   it('maps note names to MIDI numbers', () => {

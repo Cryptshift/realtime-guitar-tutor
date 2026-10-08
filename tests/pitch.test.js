@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  centsDifference,
-  detectMonophonicNotesFromAudio,
-  detectPitch,
-  midiToFrequency,
-  noteNameToMidi,
-} from '../src/main.js';
+import { detectMonophonicNotesFromAudio } from '../src/audioToTab.js';
+import { detectPitch } from '../src/dsp/pitch.js';
+import { centsDifference, midiToFrequency, noteNameToMidi } from '../src/music.js';
 import { pluckedSequence, tone, whiteNoise } from './helpers/synth.js';
 
 const GUITAR_NOTES = ['D2', 'E2', 'A2', 'D3', 'G3', 'B3', 'E4', 'E5', 'E6'];

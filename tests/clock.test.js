@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createPieceClock } from '../src/main.js';
+import { createPieceClock } from '../src/clock.js';
 
 describe('createPieceClock', () => {
   it('advances piece time at the tempo scale', () => {

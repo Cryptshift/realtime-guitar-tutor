@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import {
-  createOnsetDetector,
-  detectPitch,
-  midiToFrequency,
-  normalizePiece,
-} from '../src/main.js';
+import { createOnsetDetector } from '../src/dsp/onset.js';
+import { detectPitch } from '../src/dsp/pitch.js';
+import { midiToFrequency } from '../src/music.js';
+import { normalizePiece } from '../src/piece.js';
 
 const SAMPLE_RATE = 48000;
 const FRAME = 2048;

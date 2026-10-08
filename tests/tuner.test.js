@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { midiToFrequency, tunerCentsFromTarget } from '../src/main.js';
+import { midiToFrequency, tunerCentsFromTarget } from '../src/music.js';
 
 const E2 = midiToFrequency(40);
 const cents = (freq, c) => freq * 2 ** (c / 1200);
