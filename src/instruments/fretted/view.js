@@ -2,7 +2,7 @@
 // the left (right when left-handed), filled dots with finger numbers for the current
 // note/shape and dashed rings for what comes next.
 
-const VIEW_WIDTH = 1000;
+const VIEW_WIDTH = 1400;
 const LABEL_AREA = 70;
 const SINGLE_INLAYS = new Set([3, 5, 7, 9, 15, 17, 19, 21]);
 const DOUBLE_INLAYS = new Set([12, 24]);
@@ -41,7 +41,7 @@ export function renderFretboard(container, { layout, current, upcoming, leftHand
   const { start, end } = fretWindow([...currentNotes, ...nextNotes].map((n) => n.tab.fret), layout.maxFret);
 
   const stringCount = layout.stringCount;
-  const gap = stringCount > 4 ? 44 : 58;
+  const gap = stringCount > 4 ? 46 : 58;
   const top = 34;
   const height = top + gap * (stringCount - 1) + 56;
   const boardLeft = LABEL_AREA + 30;
@@ -85,14 +85,14 @@ export function renderFretboard(container, { layout, current, upcoming, leftHand
     if (currentKeys.has(`${note.tab.string}:${note.tab.fret}`)) return;
     const x = mx(dotX(note.tab.fret));
     const y = stringY(note.tab.string);
-    parts.push(`<circle class="fb-next" cx="${x}" cy="${y}" r="17"/>`);
+    parts.push(`<circle class="fb-next" cx="${x}" cy="${y}" r="20"/>`);
   });
   currentNotes.forEach((note) => {
     const x = mx(dotX(note.tab.fret));
     const y = stringY(note.tab.string);
     const open = note.tab.fret === 0;
     const label = open ? '0' : (Number.isInteger(note.finger) && note.finger > 0 ? note.finger : '');
-    parts.push(`<circle class="${open ? 'fb-open' : 'fb-dot'}" cx="${x}" cy="${y}" r="19"/>`);
+    parts.push(`<circle class="${open ? 'fb-open' : 'fb-dot'}" cx="${x}" cy="${y}" r="22"/>`);
     if (label !== '') parts.push(`<text class="${open ? 'fb-opennum' : 'fb-finger'}" x="${x}" y="${y + 8}">${label}</text>`);
   });
   if (start > 0) {

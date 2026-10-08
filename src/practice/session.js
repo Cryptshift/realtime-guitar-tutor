@@ -506,7 +506,11 @@ export function createPracticeSession({
         current,
         upcoming,
         target,
-        cents: centsTo(target),
+        // Only meaningful when the learner is within half a semitone of the target.
+        cents: (() => {
+          const value = centsTo(target);
+          return value !== null && Math.abs(value) < 50 ? value : null;
+        })(),
         heardMidi: s.heard ? s.heard.midi : null,
         feedback: s.feedback,
         streak: s.streak,

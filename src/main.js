@@ -1,182 +1,76 @@
-// Entry point: wires DOM events and initializes the app.
-import {
-  playBackingTrack,
-  releaseBackingTrackUrl,
-  setBackingTrackFile,
-  setBackingTrackVolume,
-  setGuideToneEnabled,
-  startAudio,
-  stopAudio,
-  stopBackingTrack,
-} from './audioEngine.js';
-import {
-  loadFromSongSelectValue,
-  loadPreset,
-  populatePieceSelect,
-  populateTuningSetSelect,
-  resetTaskProgress,
-  restartPiece,
-  setActiveBpm,
-  setBeginnerSimplifyEnabled,
-  setChordStepAdvanceEnabled,
-  setSidePanelMode,
-  setTunerTarget,
-  setTuningSet,
-  updateModeUi,
-} from './controls.js';
-import {
-  cancelAudioTabGeneration,
-  generateTabsFromAudio,
-  importTabFromUrl,
-  loadCustomPiece,
-  setAudioTabStatus,
-  setImportStatus,
-} from './importPanel.js';
-import { renderStandaloneTuner, setMicLevel } from './render/status.js';
-import { renderTabs } from './render/tabs.js';
-import { dom, queryDom, state } from './state.js';
+// Entry point: app shell (header, theme, navigation) and the screen router.
+import { app } from './app/context.js';
+import { createRouter } from './app/router.js';
+import { h, iconEl } from './ui/dom.js';
+import { libraryScreen } from './screens/library.js';
+import { onboardingScreen } from './screens/onboarding.js';
+import { practiceScreen } from './screens/practice.js';
+import { settingsScreen } from './screens/settings.js';
+import { summaryScreen } from './screens/summary.js';
+import { tunerScreen } from './screens/tuner.js';
 
-export const START_HOTKEY = 'Space';
+function applyTheme() {
+  document.documentElement.dataset.theme = app.settings.theme === 'light' ? 'light' : 'dark';
+}
 
-export function bindEvents() {
-  const handleHotkeys = (event) => {
-    if (event.code !== START_HOTKEY || event.repeat) return;
+function renderShell() {
+  const brand = document.querySelector('#brandLink');
+  brand.replaceChildren(iconEl('guitar'), h('span', { class: 'label' }, 'Realtime Tutor'));
+  brand.setAttribute('aria-label', 'Realtime Tutor, go to your songs');
 
-    const target = event.target;
-    const tagName = target?.tagName?.toUpperCase();
-    const isTypingElement = (
-      target?.isContentEditable
-      || tagName === 'INPUT'
-      || tagName === 'TEXTAREA'
-      || tagName === 'SELECT'
-      || tagName === 'BUTTON'
-    );
-
-    if (isTypingElement) return;
-
-    event.preventDefault();
-    restartPiece();
-  };
-
-  window.addEventListener('keydown', handleHotkeys);
-
-  dom.modeSelect.addEventListener('change', (event) => {
-    const nextMode = event.target.value === 'step' ? 'step' : 'timed';
-    state.practiceMode = nextMode;
-    updateModeUi();
-    restartPiece();
-  });
-
-  dom.tuningSetSelect.addEventListener('change', (event) => {
-    setTuningSet(event.target.value);
-    renderStandaloneTuner(state.lastDetectedFrequency);
-  });
-
-  dom.tunerNoteSelect.addEventListener('change', (event) => {
-    setTunerTarget(event.target.value);
-    renderStandaloneTuner(state.lastDetectedFrequency);
-  });
-
-  dom.songSelect.addEventListener('change', (event) => {
-    loadFromSongSelectValue(event.target.value);
-  });
-
-  dom.toggleTunerBtn.addEventListener('click', () => {
-    setSidePanelMode(state.sidePanelMode === 'tuner' ? 'fingering' : 'tuner');
-  });
-
-  dom.simplifyTabsToggle.addEventListener('change', (event) => {
-    setBeginnerSimplifyEnabled(event.target.checked);
-    updateModeUi();
-    restartPiece();
-  });
-
-  dom.chordStepToggle.addEventListener('change', (event) => {
-    setChordStepAdvanceEnabled(event.target.checked);
-    updateModeUi();
-    restartPiece();
-  });
-
-  dom.guideToneToggle.addEventListener('change', (event) => {
-    setGuideToneEnabled(event.target.checked);
-  });
-
-  dom.backingTrackInput.addEventListener('change', (event) => {
-    const file = event.target.files?.[0] || null;
-    setBackingTrackFile(file);
-  });
-
-  dom.backingTrackVolume.addEventListener('input', () => {
-    setBackingTrackVolume(dom.backingTrackVolume.value);
-  });
-
-  dom.playTrackBtn.addEventListener('click', () => {
-    playBackingTrack({ restart: false });
-  });
-
-  dom.stopTrackBtn.addEventListener('click', () => stopBackingTrack({ reset: false }));
-
-  dom.bpmSlider.addEventListener('input', () => {
-    setActiveBpm(dom.bpmSlider.value);
-  });
-
-  dom.latencyOffset.addEventListener('input', () => {
-    state.latencyOffsetMs = Number(dom.latencyOffset.value) || 0;
-    dom.latencyOffsetValue.textContent = `${dom.latencyOffset.value} ms`;
-  });
-
-  dom.startBtn.addEventListener('click', () => startAudio('practice'));
-  dom.stopBtn.addEventListener('click', stopAudio);
-  dom.tunerStartBtn.addEventListener('click', () => startAudio('tuner'));
-  dom.tunerStopBtn.addEventListener('click', stopAudio);
-  dom.restartBtn.addEventListener('click', restartPiece);
-  dom.loadCustomBtn.addEventListener('click', loadCustomPiece);
-  dom.importTabBtn.addEventListener('click', importTabFromUrl);
-  dom.generateAudioTabBtn.addEventListener('click', generateTabsFromAudio);
-  dom.cancelAudioTabBtn.addEventListener('click', cancelAudioTabGeneration);
-
-  dom.tabUrlInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      importTabFromUrl();
+  const nav = document.querySelector('#mainNav');
+  const isLight = app.settings.theme === 'light';
+  const themeButton = h('button', {
+    class: 'btn btn-ghost btn-icon',
+    type: 'button',
+    'aria-label': isLight ? 'Switch to dark theme' : 'Switch to light theme',
+    title: isLight ? 'Dark theme' : 'Light theme',
+    onclick: () => app.updateSettings({ theme: isLight ? 'dark' : 'light' }),
+  }, iconEl(isLight ? 'moon' : 'sun'));
+  nav.replaceChildren(
+    h('a', { href: '#/library', 'data-nav': 'library' }, iconEl('library'), h('span', { class: 'label' }, 'Library')),
+    app.instrument().tuner
+      ? h('a', { href: '#/tuner', 'data-nav': 'tuner' }, iconEl('tuner'), h('span', { class: 'label' }, 'Tuner'))
+      : null,
+    h('a', { href: '#/settings', 'data-nav': 'settings' }, iconEl('settings'), h('span', { class: 'label' }, 'Settings')),
+    themeButton,
+  );
+  const current = location.hash.replace(/^#\/?/, '').split('/')[0];
+  nav.querySelectorAll('[data-nav]').forEach((link) => {
+    if (link.dataset.nav === current) {
+      link.classList.add('is-active');
+      link.setAttribute('aria-current', 'page');
     }
   });
-
-  window.addEventListener('beforeunload', () => {
-    stopBackingTrack({ reset: false });
-    releaseBackingTrackUrl();
-    stopAudio();
-  });
 }
 
-export function init() {
-  Object.assign(dom, queryDom());
-  state.latencyOffsetMs = Number(dom.latencyOffset.value) || 0;
-  populatePieceSelect();
-  populateTuningSetSelect();
-  setTuningSet(state.tunerSetKey, state.tunerTargetNote);
-  setSidePanelMode('tuner');
-  setGuideToneEnabled(false);
-  setBeginnerSimplifyEnabled(true);
-  setBackingTrackVolume(dom.backingTrackVolume.value);
-  resetTaskProgress(dom.importProgress);
-  resetTaskProgress(dom.audioTabProgress);
-  bindEvents();
-  loadPreset(0);
-  updateModeUi();
-  dom.restartBtn.disabled = false;
-  dom.tunerStartBtn.disabled = false;
-  dom.tunerStopBtn.disabled = true;
-  dom.playTrackBtn.disabled = true;
-  dom.stopTrackBtn.disabled = true;
-  dom.micStatus.textContent = 'Idle';
-  setMicLevel(0);
-  renderTabs(null, 0);
-  renderStandaloneTuner(null);
-  setImportStatus('Import tab links into playable single-note timelines.');
-  setAudioTabStatus('Upload a clean guitar recording to auto-generate beginner single-note tabs.');
-}
+applyTheme();
+renderShell();
+app.onSettingsChange((settings, patch) => {
+  if ('theme' in patch) applyTheme();
+  if ('theme' in patch || 'instrument' in patch) renderShell();
+});
 
-if (typeof document !== 'undefined' && document.querySelector('#modeSelect')) {
-  init();
-}
+app.router = createRouter({
+  library: libraryScreen,
+  practice: practiceScreen,
+  summary: summaryScreen,
+  tuner: tunerScreen,
+  settings: settingsScreen,
+  setup: onboardingScreen,
+}, {
+  container: document.querySelector('#main'),
+  fallback: 'library',
+  beforeEach(route) {
+    if (!app.settings.onboarded && route.name !== 'setup') return 'setup';
+    return null;
+  },
+});
+app.router.start();
+
+// Unlock audio output (clicks, guide tone) on the first interaction anywhere.
+window.addEventListener('pointerdown', () => app.engine.ensureContext(), { once: true });
+window.addEventListener('keydown', () => app.engine.ensureContext(), { once: true });
+
+// Development hook for the browser test harnesses in tests/browser/.
+if (import.meta.env?.DEV) window.__rtApp = app;

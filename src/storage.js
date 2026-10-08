@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   onboarded: false,
   instrument: 'guitar',
   inputSource: 'mic',
+  micDeviceId: null,
   midiDeviceId: null,
   latencyMs: 0,
   theme: 'dark',
