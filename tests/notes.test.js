@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canonicalNoteName,
   centsDifference,
   frequencyToMidi,
   midiToFrequency,
@@ -36,7 +37,45 @@ describe('note-name helpers', () => {
   });
 });
 
+describe('canonicalNoteName', () => {
+  it('keeps flats as flats instead of upper-casing them to BB3', () => {
+    expect(canonicalNoteName('Bb3')).toBe('Bb3');
+    expect(canonicalNoteName('bb3')).toBe('Bb3');
+    expect(canonicalNoteName('BB3')).toBe('Bb3');
+    expect(canonicalNoteName(' c#4 ')).toBe('C#4');
+    expect(canonicalNoteName('e2')).toBe('E2');
+  });
+});
+
 describe('normalizePiece', () => {
+  it('displays Bb3 as Bb3', () => {
+    const piece = normalizePiece({ notes: [{ note: 'Bb3', start: 0, duration: 0.5 }] });
+    expect(piece.notes[0].note).toBe('Bb3');
+    expect(piece.notes[0].midi).toBe(58);
+  });
+
+  it('uses the latest note end as totalDuration', () => {
+    const piece = normalizePiece({
+      notes: [
+        { note: 'E2', start: 0, duration: 5 },
+        { note: 'A2', start: 1, duration: 0.5 },
+      ],
+    });
+    expect(piece.totalDuration).toBe(5);
+  });
+
+  it('counts notes outside the guitar range as unplayable', () => {
+    const piece = normalizePiece({
+      notes: [
+        { note: 'C1', start: 0, duration: 0.5 },
+        { note: 'E2', start: 0.5, duration: 0.5 },
+        { note: 'C8', start: 1, duration: 0.5 },
+      ],
+    });
+    expect(piece.playableCount).toBe(1);
+    expect(piece.notes[0].tab).toBeNull();
+  });
+
   it('sorts notes and infers beginner tab positions', () => {
     const piece = normalizePiece({
       notes: [

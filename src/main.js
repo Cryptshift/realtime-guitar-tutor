@@ -264,6 +264,7 @@ function createEmptyStats() {
     timingSamples: 0,
     timingTotal: 0,
     notesHit: new Set(),
+    notesSkipped: new Set(),
     noteHitStreak: new Map(),
     noteHitHoldMs: new Map(),
   };
@@ -308,6 +309,18 @@ function midiToNoteName(midi) {
   const note = names[((midi % 12) + 12) % 12];
   const octave = Math.floor(midi / 12) - 1;
   return `${note}${octave}`;
+}
+
+// Normalizes user/imported spellings ("bb3", "Bb3", "BB3", " c#4 ") to "Bb3" / "C#4".
+// An upper-case "B" accidental is read as flat, matching noteNameToMidi.
+function canonicalNoteName(noteName) {
+  const match = String(noteName).trim().match(/^([A-Ga-g])([#bB]?)(-?\d)$/);
+  if (!match) {
+    throw new Error(`Invalid note: ${noteName}`);
+  }
+  const [, letter, accidental, octave] = match;
+  const accidentalText = accidental === '#' ? '#' : (accidental ? 'b' : '');
+  return `${letter.toUpperCase()}${accidentalText}${octave}`;
 }
 
 function centsDifference(actualFreq, targetFreq) {
@@ -417,7 +430,7 @@ function normalizePiece(piece) {
       : inferredTabs[0] || null;
 
     return {
-      note: n.note.toUpperCase(),
+      note: canonicalNoteName(n.note),
       start,
       duration,
       end: start + duration,
@@ -438,12 +451,14 @@ function normalizePiece(piece) {
     name: piece.name || 'Custom Piece',
     bpm: piece.bpm || 100,
     notes,
-    totalDuration: notes.at(-1).end,
+    // The last-starting note is not necessarily the last to end.
+    totalDuration: notes.reduce((max, note) => Math.max(max, note.end), 0),
+    playableCount: notes.filter((note) => !isStepNoteEmptyOrUnmapped(note)).length,
   };
 }
 
 function createVirtualNote(noteName) {
-  const upperName = noteName.toUpperCase();
+  const upperName = canonicalNoteName(noteName);
   const midi = noteNameToMidi(upperName);
   const inferredTabs = tabPositionsForMidi(midi);
 
@@ -543,7 +558,8 @@ function skipEmptyStepNotes() {
     if (!isStepNoteEmptyOrUnmapped(note)) {
       break;
     }
-    state.stats.notesHit.add(state.stepIndex);
+    // Out-of-range/unmapped notes are skipped, not counted as hits.
+    state.stats.notesSkipped.add(state.stepIndex);
     state.stats.noteHitStreak.set(state.stepIndex, 0);
     state.stats.noteHitHoldMs.set(state.stepIndex, 0);
     state.stepIndex += 1;
@@ -843,7 +859,8 @@ function parseBpmFromText(rawText, options = {}) {
   const candidates = [];
   const patterns = [
     /(?:^|[\s>"'=])(bpm|tempo)\s*[:=]?\s*(\d{2,3}(?:\.\d+)?)/gi,
-    /"bpm"\s*:\s*"?(\\?\d{2,3}(?:\.\d+)?)"?/gi,
+    // Plain or escaped JSON: "bpm":120, "bpm":"120", \"bpm\":120
+    /\\?"bpm\\?"\s*:\s*\\?"?(\d{2,3}(?:\.\d+)?)/gi,
     /(\d{2,3}(?:\.\d+)?)\s*bpm/gi,
   ];
 
@@ -1856,7 +1873,9 @@ async function generateTabsFromAudio() {
 
 function findTargetNoteAt(shiftedElapsedSeconds, piece) {
   const activeNotes = piece.notes.filter(
-    (note) => shiftedElapsedSeconds >= note.start && shiftedElapsedSeconds < note.end,
+    (note) => shiftedElapsedSeconds >= note.start
+      && shiftedElapsedSeconds < note.end
+      && !isStepNoteEmptyOrUnmapped(note),
   );
   if (!activeNotes.length) return null;
 
@@ -2176,7 +2195,7 @@ function restartPiece() {
   skipEmptyStepNotes();
   state.startTimestamp = performance.now();
   state.lastTickAtMs = state.startTimestamp;
-  renderProgress(state.stats.notesHit.size, state.activePiece.notes.length);
+  renderPieceProgress();
   renderScores(state.practiceMode);
   renderCloseness(Number.NaN, 0, false);
   renderTabs(null, 0);
@@ -2299,9 +2318,16 @@ function renderCloseness(centsAbs, centsSigned, isTargetActive) {
   dom.centsOff.textContent = `${centsSigned > 0 ? '+' : ''}${centsSigned.toFixed(1)} cents`;
 }
 
-function renderProgress(noteCountHit, total) {
-  dom.progressText.textContent = `${noteCountHit} / ${total} notes hit`;
+function renderProgress(noteCountHit, total, unplayableCount = 0) {
+  const unplayableText = unplayableCount > 0 ? ` (${unplayableCount} unplayable skipped)` : '';
+  dom.progressText.textContent = `${noteCountHit} / ${total} notes hit${unplayableText}`;
   dom.pieceProgress.value = total > 0 ? (noteCountHit / total) * 100 : 0;
+}
+
+function renderPieceProgress() {
+  const piece = state.activePiece;
+  const playable = Number.isFinite(piece.playableCount) ? piece.playableCount : piece.notes.length;
+  renderProgress(state.stats.notesHit.size, playable, piece.notes.length - playable);
 }
 
 function renderScores(mode = state.practiceMode) {
@@ -3040,7 +3066,7 @@ function scoreFrame({
 }) {
   if (!targetNote) {
     renderCloseness(Number.NaN, 0, false);
-    renderProgress(state.stats.notesHit.size, state.activePiece.notes.length);
+    renderPieceProgress();
     renderScores(state.practiceMode);
     return;
   }
@@ -3052,7 +3078,7 @@ function scoreFrame({
     if (endIndex >= state.stepIndex) {
       state.stepIndex = endIndex + 1;
     }
-    renderProgress(state.stats.notesHit.size, state.activePiece.notes.length);
+    renderPieceProgress();
     renderScores(state.practiceMode);
     return;
   }
@@ -3077,7 +3103,7 @@ function scoreFrame({
     dom.closeness.textContent = 'Wait';
     dom.centsOff.textContent = 'Outside hit window';
     resetHitCandidates(activeCandidates);
-    renderProgress(state.stats.notesHit.size, state.activePiece.notes.length);
+    renderPieceProgress();
     renderScores(state.practiceMode);
     return;
   }
@@ -3097,7 +3123,7 @@ function scoreFrame({
   if ((!hasLivePitch || !detectedFrequency) && !hasFullChordMatch) {
     renderCloseness(Number.NaN, 0, true);
     resetHitCandidates(activeCandidates);
-    renderProgress(state.stats.notesHit.size, state.activePiece.notes.length);
+    renderPieceProgress();
     renderScores(state.practiceMode);
     return;
   }
@@ -3190,7 +3216,7 @@ function scoreFrame({
   if (holdHint) {
     dom.centsOff.textContent = holdHint;
   }
-  renderProgress(state.stats.notesHit.size, state.activePiece.notes.length);
+  renderPieceProgress();
   renderScores(state.practiceMode);
 }
 
@@ -3491,6 +3517,7 @@ export {
   midiToNoteName,
   midiToFrequency,
   frequencyToMidi,
+  canonicalNoteName,
   centsDifference,
   tunerCentsFromTarget,
   normalizePiece,
