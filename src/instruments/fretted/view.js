@@ -2,7 +2,8 @@
 // the left (right when left-handed), filled dots with finger numbers for the current
 // note/shape and dashed rings for what comes next.
 
-const VIEW_WIDTH = 1400;
+const WIDE_VIEW = 1400;
+const NARROW_VIEW = 760;
 const LABEL_AREA = 70;
 const SINGLE_INLAYS = new Set([3, 5, 7, 9, 15, 17, 19, 21]);
 const DOUBLE_INLAYS = new Set([12, 24]);
@@ -11,12 +12,12 @@ const escapeText = (value) => String(value).replace(/[&<>"]/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
 }[c]));
 
-function fretWindow(frets, maxFret) {
+function fretWindow(frets, maxFret, span) {
   const highest = frets.length ? Math.max(...frets) : 0;
-  if (highest <= 6) return { start: 0, end: 7 };
+  if (highest <= span - 1) return { start: 0, end: span };
   const lowestFretted = Math.min(...frets.filter((f) => f > 0));
-  const start = Math.max(1, Math.min(lowestFretted - 1, highest - 6));
-  return { start, end: Math.min(maxFret, Math.max(start + 6, highest + 1)) };
+  const start = Math.max(1, Math.min(lowestFretted - 1, highest - (span - 1)));
+  return { start, end: Math.min(maxFret, Math.max(start + span - 1, highest + 1)) };
 }
 
 export function describePosition(note, layout) {
@@ -38,7 +39,10 @@ function describeGroupPositions(group, layout) {
 export function renderFretboard(container, { layout, current, upcoming, leftHanded = false, legend = '' }) {
   const currentNotes = (current?.group || []).filter((note) => note?.tab);
   const nextNotes = (upcoming?.group || []).filter((note) => note?.tab);
-  const { start, end } = fretWindow([...currentNotes, ...nextNotes].map((n) => n.tab.fret), layout.maxFret);
+  // Phones get a shorter, larger slice of the neck.
+  const narrow = container.clientWidth > 0 && container.clientWidth < 520;
+  const VIEW_WIDTH = narrow ? NARROW_VIEW : WIDE_VIEW;
+  const { start, end } = fretWindow([...currentNotes, ...nextNotes].map((n) => n.tab.fret), layout.maxFret, narrow ? 4 : 7);
 
   const stringCount = layout.stringCount;
   const gap = stringCount > 4 ? 46 : 58;

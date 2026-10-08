@@ -120,7 +120,7 @@ export const practiceScreen = {
     const backingStatus = h('span', { class: 'field-hint' }, 'Plays from the start of the song, at your tempo.');
     const guideBox = h('input', { type: 'checkbox', checked: settings.guideTone, onchange: (e) => app.updateSettings({ guideTone: e.target.checked }) });
     const more = h('details', { class: 'more-options' },
-      h('summary', {}, iconEl('settings'), 'More options'),
+      h('summary', { 'aria-label': 'More options: backing track and guide tone' }, iconEl('settings'), 'More'),
       h('div', { class: 'options-body' },
         h('div', { class: 'field' }, h('label', { for: 'backingFile' }, 'Backing track'), backingInput, backingStatus),
         h('label', { class: 'switch' }, guideBox, 'Guide tone in Play along (use headphones)')));

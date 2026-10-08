@@ -40,14 +40,15 @@ function renderShell() {
     title: isLight ? 'Dark theme' : 'Light theme',
     onclick: () => app.updateSettings({ theme: isLight ? 'dark' : 'light' }),
   }, iconEl(isLight ? 'moon' : 'sun'));
-  nav.replaceChildren(
+  nav.replaceChildren(...[
     h('a', { href: '#/library', 'data-nav': 'library' }, iconEl('library'), h('span', { class: 'label' }, 'Library')),
+    // The tuner only exists for instruments the learner tunes (not piano).
     app.instrument().tuner
       ? h('a', { href: '#/tuner', 'data-nav': 'tuner' }, iconEl('tuner'), h('span', { class: 'label' }, 'Tuner'))
       : null,
     h('a', { href: '#/settings', 'data-nav': 'settings' }, iconEl('settings'), h('span', { class: 'label' }, 'Settings')),
     themeButton,
-  );
+  ].filter(Boolean));
   const current = location.hash.replace(/^#\/?/, '').split('/')[0];
   nav.querySelectorAll('[data-nav]').forEach((link) => {
     if (link.dataset.nav === current) {

@@ -112,11 +112,20 @@ export const tunerScreen = {
         return;
       }
       const candidates = selected === 'auto' ? strings() : strings().filter((s) => s.name === selected);
-      let best = null;
-      candidates.forEach((candidate) => {
-        const reading = tunerCentsFromTarget(frequency, midiToFrequency(candidate.midi));
-        if (!best || Math.abs(reading.cents) < Math.abs(best.cents)) best = { ...reading, candidate };
-      });
+      // Nearest string by its real pitch; octave folding only helps when no string is close
+      // (e.g. the detector locked onto a harmonic).
+      const raw = candidates.map((candidate) => ({
+        candidate,
+        cents: 1200 * Math.log2(frequency / midiToFrequency(candidate.midi)),
+        octaveShift: 0,
+      })).sort((a, b) => Math.abs(a.cents) - Math.abs(b.cents));
+      let best = raw[0];
+      if (Math.abs(best.cents) > 300) {
+        candidates.forEach((candidate) => {
+          const reading = tunerCentsFromTarget(frequency, midiToFrequency(candidate.midi));
+          if (Math.abs(reading.cents) < Math.abs(best.cents)) best = { ...reading, candidate };
+        });
+      }
       const { cents } = best;
       const shown = Math.max(-50, Math.min(50, cents));
       needle.style.transform = `rotate(${shown * 1.2}deg)`;

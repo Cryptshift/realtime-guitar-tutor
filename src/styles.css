@@ -157,7 +157,8 @@ a {
   border-radius: 6px;
 }
 
-h1:focus {
+h1:focus,
+h2[tabindex='-1']:focus {
   outline: none;
 }
 
@@ -877,7 +878,7 @@ dialog::backdrop {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-width: 240px;
+  min-width: 200px;
 }
 
 .tempo-control output {
@@ -1340,6 +1341,10 @@ dialog::backdrop {
   font-weight: 600;
 }
 
+.card > h2 + * {
+  margin-top: var(--space-3);
+}
+
 .tricky-list {
   display: flex;
   flex-wrap: wrap;
@@ -1367,7 +1372,8 @@ dialog::backdrop {
 }
 
 .tuner-gauge {
-  width: min(620px, 100%);
+  width: min(560px, 100%, calc((100vh - 470px) * 1.8));
+  min-width: min(300px, 100%);
 }
 
 .tuner-gauge .arc {
@@ -1411,7 +1417,7 @@ dialog::backdrop {
 }
 
 .tuner-note {
-  font-size: clamp(80px, 16vw, 150px);
+  font-size: clamp(64px, min(16vw, 12vh), 140px);
   font-weight: 800;
   line-height: 1;
 }
@@ -1620,6 +1626,51 @@ dialog::backdrop {
 
 /* ---------- Layouts ---------- */
 
+/* Short screens (tablet landscape on a stand, small laptops): keep the whole practice
+   screen above the fold. */
+@media (max-height: 820px) and (min-width: 721px) {
+  .practice {
+    gap: var(--space-2);
+  }
+
+  .song-progress {
+    height: 28px;
+  }
+
+  .stage {
+    min-height: 30vh;
+  }
+
+  .now-card {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .now-note {
+    font-size: clamp(52px, 10vh, 120px);
+  }
+
+  .now-position {
+    font-size: 17px;
+  }
+
+  .feedback {
+    font-size: 18px;
+    min-height: 2.2em;
+  }
+
+  .instrument-view {
+    padding: var(--space-2);
+  }
+
+  .instrument-view .view-canvas svg {
+    max-height: 19vh;
+  }
+
+  .instrument-caption {
+    margin-top: var(--space-1);
+  }
+}
+
 @media (max-width: 1180px) {
   .practice-footer .input-status span:last-child {
     display: none;
@@ -1661,6 +1712,7 @@ dialog::backdrop {
   .stage {
     grid-template-columns: 1fr;
     height: auto;
+    min-height: 0;
   }
 
   .stage .highway {
@@ -1683,8 +1735,16 @@ dialog::backdrop {
     display: none;
   }
 
-  .practice-top .btn-ghost span {
+  .practice-top .btn-ghost > span:not(.icon) {
     display: none;
+  }
+
+  .now-card .now-position {
+    font-size: 16px;
+  }
+
+  .now-card .feedback {
+    font-size: 17px;
   }
 
   .practice-options {
