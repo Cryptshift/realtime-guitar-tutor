@@ -1,6 +1,5 @@
 // Guitar tab text for the previous/current/next slots and timeline labels.
 import { GUITAR_STRINGS, MAX_FRET_FOR_BEGINNER_TAB } from './strings.js';
-import { chordGroupForNote } from '../../scoring.js';
 
 export function tabbedNotesFromGroup(groupNotes) {
   return groupNotes
@@ -35,9 +34,8 @@ export function buildTabDiagram(groupNotes) {
   return diagramRows.join('\n');
 }
 
-export function tabSummary(note) {
+export function tabSummary(note, group = [note]) {
   if (!note) return '--';
-  const group = chordGroupForNote(note);
   const tabbed = tabbedNotesFromGroup(group);
   if (!tabbed.length) {
     return note.note || '--';
@@ -49,9 +47,8 @@ export function tabSummary(note) {
   return `${tabbed.length}-string shape · ${formatGroupTargets(tabbed)}`;
 }
 
-export function planStepLabel(note) {
+export function planStepLabel(note, group = [note]) {
   if (!note) return '--';
-  const group = chordGroupForNote(note);
   const tabbed = tabbedNotesFromGroup(group);
   if (!tabbed.length) return note.note || '--';
   if (tabbed.length === 1) {
@@ -61,9 +58,8 @@ export function planStepLabel(note) {
   return `Press together: ${formatGroupTargets(tabbed)}`;
 }
 
-export function tabHintText(note, emptyMessage) {
+export function tabHintText(note, group, emptyMessage) {
   if (!note) return emptyMessage;
-  const group = chordGroupForNote(note);
   const tabbed = tabbedNotesFromGroup(group);
   if (!tabbed.length) return 'No mapped fret position for this note.';
 

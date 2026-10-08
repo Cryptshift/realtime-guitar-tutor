@@ -1,6 +1,5 @@
 // Piece model: preset pieces, normalization, onset windows, custom piece input.
-import { MAX_FRET_FOR_BEGINNER_TAB, isValidTab, tabPositionsForMidi } from './instruments/guitar/strings.js';
-import { countTabLines, parsePastedTab } from './instruments/guitar/tabParser.js';
+import { getInstrument } from './instruments/index.js';
 import { canonicalNoteName, midiToFrequency, noteNameToMidi } from './music.js';
 
 // A timed note counts only if a fresh onset (pluck or pitch change) lands within this
@@ -46,7 +45,7 @@ export const presetPieces = [
   },
 ];
 
-export function normalizePiece(piece) {
+export function normalizePiece(piece, instrument = getInstrument()) {
   if (!piece || !Array.isArray(piece.notes) || piece.notes.length === 0) {
     throw new Error('Piece must include a non-empty notes array');
   }
@@ -69,29 +68,19 @@ export function normalizePiece(piece) {
       throw new Error(`Invalid start/duration at index ${idx}`);
     }
 
-    const inferredTabs = tabPositionsForMidi(midi);
-    const preferredTab = isValidTab(n.tab)
-      ? {
-        string: n.tab.string,
-        fret: n.tab.fret,
-        isExtended: n.tab.fret > MAX_FRET_FOR_BEGINNER_TAB,
-        chordSize: Number.isFinite(n.tab.chordSize) ? n.tab.chordSize : 1,
-        chordIndex: Number.isFinite(n.tab.chordIndex) ? n.tab.chordIndex : 0,
-        isChordTone: Boolean(n.tab.isChordTone) || (Number.isFinite(n.tab.chordSize) && n.tab.chordSize > 1),
-      }
-      : inferredTabs[0] || null;
-
-    return {
+    const normalizedNote = {
       note: canonicalNoteName(n.note),
       start,
       duration,
       end: start + duration,
       midi,
       freq: midiToFrequency(midi),
-      tab: preferredTab,
-      tabAlternatives: inferredTabs,
+      // Instrument-specific placement (guitar: tab + tabAlternatives).
+      ...instrument.placeNote(n, midi),
       index: idx,
     };
+    normalizedNote.playable = instrument.isPlayable(normalizedNote);
+    return normalizedNote;
   });
 
   notes.sort((a, b) => a.start - b.start);
@@ -135,35 +124,42 @@ export function assignOnsetWindows(notes) {
   });
 }
 
-export function createVirtualNote(noteName) {
+export function createVirtualNote(noteName, instrument = getInstrument()) {
   const upperName = canonicalNoteName(noteName);
   const midi = noteNameToMidi(upperName);
-  const inferredTabs = tabPositionsForMidi(midi);
 
-  return {
+  const virtualNote = {
     note: upperName,
     start: 0,
     duration: 1,
     end: 1,
     midi,
     freq: midiToFrequency(midi),
-    tab: inferredTabs[0] || null,
-    tabAlternatives: inferredTabs,
+    ...instrument.placeNote({}, midi),
     index: -1,
   };
+  virtualNote.playable = instrument.isPlayable(virtualNote);
+  return virtualNote;
 }
 
-export function toPieceSnapshot(normalizedPiece) {
+export function toPieceSnapshot(normalizedPiece, instrument = getInstrument()) {
   return {
     name: normalizedPiece.name,
     bpm: normalizedPiece.bpm,
-    notes: normalizedPiece.notes.map(({ note, start, duration, tab }) => ({ note, start, duration, tab })),
+    notes: normalizedPiece.notes.map((note) => ({
+      note: note.note,
+      start: note.start,
+      duration: note.duration,
+      ...instrument.serializePlacement(note),
+    })),
   };
 }
 
+// True when a note can't be played on the active instrument (outside its range or with
+// no placement); such notes are skipped and reported as "unplayable".
 export function isStepNoteEmptyOrUnmapped(note) {
   if (!note) return true;
-  return !Number.isFinite(note.freq) || !note.tab;
+  return !Number.isFinite(note.freq) || !note.playable;
 }
 
 export function clampBpm(bpm) {
@@ -172,8 +168,10 @@ export function clampBpm(bpm) {
   return Math.max(40, Math.min(240, Math.round(numeric)));
 }
 
-// Accepts piece JSON (array or { notes }), optionally in a ```json fence, or raw ASCII tab.
-export function parseCustomPieceInput(raw, tabOptions = {}) {
+// Accepts piece JSON (array or { notes }), optionally in a ```json fence, or any plain-text
+// format the instrument can import (guitar: raw ASCII tab).
+export function parseCustomPieceInput(raw, tabOptions = {}, instrument = getInstrument()) {
+  const textImporter = instrument.importers?.text;
   const trimmed = raw.trim();
   if (!trimmed) {
     throw new Error('Custom piece is empty');
@@ -184,8 +182,8 @@ export function parseCustomPieceInput(raw, tabOptions = {}) {
   const candidate = fencedMatch ? fencedMatch[1].trim() : trimmed;
 
   const looksLikeJson = /^[[{]/.test(candidate);
-  if (!looksLikeJson && countTabLines(candidate) >= 6) {
-    return parsePastedTab(candidate, tabOptions);
+  if (!looksLikeJson && textImporter?.canParse(candidate)) {
+    return textImporter.parse(candidate, tabOptions);
   }
 
   const parseAttempts = [candidate];
@@ -212,10 +210,11 @@ export function parseCustomPieceInput(raw, tabOptions = {}) {
   }
 
   if (parsed === null) {
-    if (countTabLines(candidate) >= 6) {
-      return parsePastedTab(candidate, tabOptions);
+    if (textImporter?.canParse(candidate)) {
+      return textImporter.parse(candidate, tabOptions);
     }
-    throw new Error(`${lastError?.message || 'Could not parse JSON'} (and no 6-line ASCII tab system was found)`);
+    const alternative = textImporter?.formatName ? ` (and no ${textImporter.formatName} was found)` : '';
+    throw new Error(`${lastError?.message || 'Could not parse JSON'}${alternative}`);
   }
 
   if (Array.isArray(parsed)) {

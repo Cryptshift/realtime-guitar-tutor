@@ -1,7 +1,11 @@
 // Shared mutable app state and the DOM element registry (filled by init()).
 import { createPieceClock } from './clock.js';
 import { createOnsetDetector } from './dsp/onset.js';
+import { getInstrument } from './instruments/index.js';
 import { presetPieces } from './piece.js';
+
+const initialInstrument = getInstrument();
+const initialTuningSet = initialInstrument.tuner?.sets?.[initialInstrument.tuner.defaultSet];
 
 // Populated by init() so this module can be imported (e.g. by unit tests) without a DOM.
 export const dom = {};
@@ -120,8 +124,9 @@ export const state = {
   listenMode: 'practice',
   practiceMode: 'timed',
   stepIndex: 0,
-  tunerSetKey: 'standard',
-  tunerTargetNote: 'E2',
+  instrument: initialInstrument,
+  tunerSetKey: initialInstrument.tuner?.defaultSet || null,
+  tunerTargetNote: initialTuningSet?.notes?.[0] || null,
   tunerTarget: null,
   activePiece: presetPieces[0],
   importedPieces: [],

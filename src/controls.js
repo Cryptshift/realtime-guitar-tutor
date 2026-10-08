@@ -1,6 +1,5 @@
 // Control-panel state changes: piece selection, modes, BPM, tuner selects, restart.
 import { shouldSyncBackingTrack, syncBackingTrackToPracticeStart, updateGuideToneHint } from './audioEngine.js';
-import { TUNING_SETS } from './instruments/guitar/tuning.js';
 import {
   TIMED_ONSET_WINDOW_MS,
   clampBpm,
@@ -22,14 +21,14 @@ import {
 import { createEmptyStats, dom, state } from './state.js';
 
 export function syncPieceEditor(normalizedPiece) {
-  dom.customPiece.value = JSON.stringify(toPieceSnapshot(normalizedPiece), null, 2);
+  dom.customPiece.value = JSON.stringify(toPieceSnapshot(normalizedPiece, state.instrument), null, 2);
 }
 
 export function setActivePieceAsImported(normalizedPiece) {
   state.activePiece = normalizedPiece;
   syncBpmSliderWithPiece(normalizedPiece);
   syncPieceEditor(normalizedPiece);
-  state.importedPieces.push(toPieceSnapshot(normalizedPiece));
+  state.importedPieces.push(toPieceSnapshot(normalizedPiece, state.instrument));
   const importedSelectValue = `imported:${state.importedPieces.length - 1}`;
   populatePieceSelect(importedSelectValue);
   restartPiece();
@@ -98,9 +97,14 @@ export function populatePieceSelect(selectedValue = null) {
   }
 }
 
+// Tuner presets come from the active instrument (guitar: standard, drop D, ...).
+function tuningSets() {
+  return state.instrument.tuner?.sets || {};
+}
+
 export function populateTuningSetSelect() {
   dom.tuningSetSelect.innerHTML = '';
-  Object.entries(TUNING_SETS).forEach(([setKey, setData]) => {
+  Object.entries(tuningSets()).forEach(([setKey, setData]) => {
     const option = document.createElement('option');
     option.value = setKey;
     option.textContent = setData.label;
@@ -109,7 +113,7 @@ export function populateTuningSetSelect() {
 }
 
 export function populateTunerNoteSelectForSet(setKey, preferredNote = null) {
-  const setData = TUNING_SETS[setKey];
+  const setData = tuningSets()[setKey];
   if (!setData) return null;
 
   dom.tunerNoteSelect.innerHTML = '';
@@ -132,14 +136,14 @@ export function populateTunerNoteSelectForSet(setKey, preferredNote = null) {
 export function setTunerTarget(noteName) {
   const normalized = noteName.toUpperCase();
   state.tunerTargetNote = normalized;
-  state.tunerTarget = createVirtualNote(normalized);
+  state.tunerTarget = createVirtualNote(normalized, state.instrument);
   dom.tunerNoteSelect.value = normalized;
   dom.tunerTargetDisplay.textContent = normalized;
   dom.tunerStatus.textContent = `Target ${normalized}. Tune until close.`;
 }
 
 export function setTuningSet(setKey, preferredNote = null) {
-  const normalizedSetKey = Object.hasOwn(TUNING_SETS, setKey) ? setKey : 'standard';
+  const normalizedSetKey = Object.hasOwn(tuningSets(), setKey) ? setKey : state.instrument.tuner?.defaultSet;
   state.tunerSetKey = normalizedSetKey;
   dom.tuningSetSelect.value = normalizedSetKey;
 
@@ -210,7 +214,7 @@ export function restartPiece() {
 export function loadPreset(index) {
   const selected = presetPieces[index];
   if (!selected) return;
-  state.activePiece = normalizePiece(selected);
+  state.activePiece = normalizePiece(selected, state.instrument);
   syncBpmSliderWithPiece(state.activePiece);
   dom.customLoadStatus.textContent = `Loaded: ${state.activePiece.name}`;
   syncPieceEditor(state.activePiece);
@@ -221,7 +225,7 @@ export function loadPreset(index) {
 export function loadImported(index) {
   const selected = state.importedPieces[index];
   if (!selected) return;
-  state.activePiece = normalizePiece(selected);
+  state.activePiece = normalizePiece(selected, state.instrument);
   syncBpmSliderWithPiece(state.activePiece);
   dom.customLoadStatus.textContent = `Loaded imported: ${state.activePiece.name}`;
   syncPieceEditor(state.activePiece);

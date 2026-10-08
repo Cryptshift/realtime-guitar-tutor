@@ -20,10 +20,10 @@ export function downmixAudioBufferToMono(audioBuffer) {
 // new note. Below 1 so chromatic neighbours split; above 0.5 so mild vibrato doesn't.
 export const AUDIO_TAB_SAME_NOTE_SEMITONES = 0.6;
 
-export function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs = 130) {
+export function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs = 130, { range, frameSize: preferredFrameSize = FFT_SIZE } = {}) {
   if (!monoData?.length) return [];
 
-  const frameSize = Math.min(FFT_SIZE, monoData.length);
+  const frameSize = Math.min(preferredFrameSize, monoData.length);
   const hopSize = Math.max(256, Math.floor(sampleRate * 0.03));
   const frameSeconds = hopSize / sampleRate;
   const minFrames = Math.max(2, Math.round((Math.max(80, minNoteMs) / 1000) / frameSeconds));
@@ -31,7 +31,7 @@ export function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs =
 
   for (let offset = 0; offset + frameSize <= monoData.length; offset += hopSize) {
     const frame = monoData.subarray(offset, offset + frameSize);
-    const pitch = detectPitch(frame, sampleRate);
+    const pitch = detectPitch(frame, sampleRate, range);
     frames.push({
       time: offset / sampleRate,
       pitch: pitch ? frequencyToFractionalMidi(pitch.frequency) : null,

@@ -9,13 +9,6 @@ import {
   syncPieceEditor,
 } from './controls.js';
 import { fetchTabPage, guessPieceNameFromUrl } from './import/fetch.js';
-import { extractTabImportData } from './instruments/guitar/pageImport.js';
-import {
-  DEFAULT_COLUMNS_PER_BEAT,
-  DEFAULT_TAB_MS_PER_COLUMN,
-  bpmToMsPerColumn,
-  parseTabTextToPiece,
-} from './instruments/guitar/tabParser.js';
 import { normalizePiece, parseCustomPieceInput } from './piece.js';
 import { dom, state } from './state.js';
 
@@ -45,7 +38,13 @@ export async function importTabFromUrl() {
     return;
   }
 
-  const msPerColumn = Number(dom.msPerColumnInput.value || DEFAULT_TAB_MS_PER_COLUMN);
+  const pageImporter = state.instrument.importers?.page;
+  if (!pageImporter) {
+    setImportStatus(`URL import is not available for ${state.instrument.name}`, true);
+    return;
+  }
+
+  const msPerColumn = Number(dom.msPerColumnInput.value || pageImporter.defaultMsPerColumn);
   if (!Number.isFinite(msPerColumn) || msPerColumn < 40 || msPerColumn > 500) {
     setImportStatus('ms/column must be between 40 and 500', true);
     return;
@@ -58,40 +57,23 @@ export async function importTabFromUrl() {
   try {
     const { htmlOrText, via } = await fetchTabPage(parsedUrl.toString());
     setTaskProgress(dom.importProgress, 35);
-    const { tabText, tuning, bpm, capo } = extractTabImportData(htmlOrText);
-    setTaskProgress(dom.importProgress, 55);
-    const pieceName = guessPieceNameFromUrl(parsedUrl.toString());
-    const typedMsPerColumn = Number(dom.msPerColumnInput.value || DEFAULT_TAB_MS_PER_COLUMN);
-    const usingDefaultMsPerColumn = typedMsPerColumn === DEFAULT_TAB_MS_PER_COLUMN;
-    const effectiveMsPerColumn = bpm && usingDefaultMsPerColumn
-      ? bpmToMsPerColumn(bpm.bpm, DEFAULT_COLUMNS_PER_BEAT)
-      : msPerColumn;
-    if (bpm && usingDefaultMsPerColumn) {
-      dom.msPerColumnInput.value = String(effectiveMsPerColumn);
+    const imported = pageImporter.parse(htmlOrText, {
+      pieceName: guessPieceNameFromUrl(parsedUrl.toString()),
+      msPerColumn,
+      simplifyToSingleNotes: state.simplifyTabs,
+    });
+    if (imported.msPerColumn) {
+      dom.msPerColumnInput.value = String(imported.msPerColumn);
     }
-    const parsedPiece = parseTabTextToPiece(
-      tabText,
-      effectiveMsPerColumn,
-      pieceName,
-      tuning?.openMidiByString || null,
-      bpm?.bpm || null,
-      { simplifyToSingleNotes: state.simplifyTabs, capo },
-    );
     setTaskProgress(dom.importProgress, 75);
-    const normalized = normalizePiece(parsedPiece);
+    const normalized = normalizePiece(imported.piece, state.instrument);
     setTaskProgress(dom.importProgress, 90);
 
     setActivePieceAsImported(normalized);
     dom.customLoadStatus.textContent = `Imported piece loaded (${normalized.notes.length} notes)`;
     setTaskProgress(dom.importProgress, 100);
 
-    const detailBits = [];
-    if (tuning) detailBits.push(`Tuning: ${tuning.label} (${tuning.source || 'tab text'})`);
-    if (capo) detailBits.push(`Capo ${capo}`);
-    if (bpm) detailBits.push(`BPM: ${bpm.bpm} (${bpm.source})`);
-    if (bpm && usingDefaultMsPerColumn) {
-      detailBits.push(`ms/col auto: ${effectiveMsPerColumn}`);
-    }
+    const detailBits = [...imported.details];
     detailBits.push(state.simplifyTabs ? 'Mode: beginner simplify' : 'Mode: chord-preserving');
 
     setImportStatus(
@@ -120,7 +102,10 @@ export async function generatePieceFromAudio(file, minNoteMs, onProgress = () =>
     const audioBuffer = await decodeContext.decodeAudioData(arrayBuffer.slice(0));
     onProgress(48);
     const mono = downmixAudioBufferToMono(audioBuffer);
-    const detectedNotes = detectMonophonicNotesFromAudio(mono, audioBuffer.sampleRate, minNoteMs);
+    const detectedNotes = detectMonophonicNotesFromAudio(mono, audioBuffer.sampleRate, minNoteMs, {
+      range: state.instrument.detector,
+      frameSize: state.instrument.detector?.frameSize,
+    });
     onProgress(72);
     if (!detectedNotes.length) {
       throw new Error('No stable guitar notes detected');
@@ -163,7 +148,7 @@ export async function generateTabsFromAudio() {
     const piece = await generatePieceFromAudio(file, minNoteMs, (progress) => {
       setTaskProgress(dom.audioTabProgress, progress);
     });
-    const normalized = normalizePiece(piece);
+    const normalized = normalizePiece(piece, state.instrument);
     setTaskProgress(dom.audioTabProgress, 96);
     setActivePieceAsImported(normalized);
     setTaskProgress(dom.audioTabProgress, 100);
@@ -187,12 +172,13 @@ export function loadCustomPiece() {
   }
 
   try {
-    const msPerColumn = Number(dom.msPerColumnInput.value || DEFAULT_TAB_MS_PER_COLUMN);
+    const defaultMsPerColumn = state.instrument.importers?.page?.defaultMsPerColumn;
+    const msPerColumn = Number(dom.msPerColumnInput.value || defaultMsPerColumn);
     const pieceLike = parseCustomPieceInput(raw, {
-      msPerColumn: Number.isFinite(msPerColumn) ? msPerColumn : DEFAULT_TAB_MS_PER_COLUMN,
+      msPerColumn: Number.isFinite(msPerColumn) ? msPerColumn : defaultMsPerColumn,
       simplifyToSingleNotes: state.simplifyTabs,
-    });
-    const normalized = normalizePiece(pieceLike);
+    }, state.instrument);
+    const normalized = normalizePiece(pieceLike, state.instrument);
 
     state.activePiece = normalized;
     syncBpmSliderWithPiece(normalized);

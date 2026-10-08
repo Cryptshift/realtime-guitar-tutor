@@ -1,6 +1,13 @@
 // Finds guitar tab text in a fetched page (Ultimate Guitar .js-store, generic HTML, plain text).
 import { extractBpmMetadata, parseBpmFromText } from '../../import/metadata.js';
-import { countTabLines, stripTabMarkup } from './tabParser.js';
+import {
+  DEFAULT_COLUMNS_PER_BEAT,
+  DEFAULT_TAB_MS_PER_COLUMN,
+  bpmToMsPerColumn,
+  countTabLines,
+  parseTabTextToPiece,
+  stripTabMarkup,
+} from './tabParser.js';
 import { extractTuningMetadata, parseTuningFromText } from './tuning.js';
 
 // Ultimate Guitar ships the tab as JSON in <div class="js-store" data-content="...">
@@ -95,5 +102,37 @@ export function extractTabImportData(rawText) {
     tuning: extractTuningMetadata(rawText, doc),
     bpm: extractBpmMetadata(rawText, doc),
     capo: 0,
+  };
+}
+
+// Instrument importer hook for a fetched page: finds the tab, applies page tuning/capo/BPM,
+// and converts it to a piece. A BPM on the page replaces the default ms-per-column.
+export function importTabPage(htmlOrText, { pieceName, msPerColumn, simplifyToSingleNotes = true } = {}) {
+  const { tabText, tuning, bpm, capo } = extractTabImportData(htmlOrText);
+  const requestedMsPerColumn = Number.isFinite(msPerColumn) ? msPerColumn : DEFAULT_TAB_MS_PER_COLUMN;
+  const usingDefaultMsPerColumn = requestedMsPerColumn === DEFAULT_TAB_MS_PER_COLUMN;
+  const effectiveMsPerColumn = bpm && usingDefaultMsPerColumn
+    ? bpmToMsPerColumn(bpm.bpm, DEFAULT_COLUMNS_PER_BEAT)
+    : requestedMsPerColumn;
+
+  const piece = parseTabTextToPiece(
+    tabText,
+    effectiveMsPerColumn,
+    pieceName,
+    tuning?.openMidiByString || null,
+    bpm?.bpm || null,
+    { simplifyToSingleNotes, capo },
+  );
+
+  const details = [];
+  if (tuning) details.push(`Tuning: ${tuning.label} (${tuning.source || 'tab text'})`);
+  if (capo) details.push(`Capo ${capo}`);
+  if (bpm) details.push(`BPM: ${bpm.bpm} (${bpm.source})`);
+  if (bpm && usingDefaultMsPerColumn) details.push(`ms/col auto: ${effectiveMsPerColumn}`);
+
+  return {
+    piece,
+    details,
+    msPerColumn: bpm && usingDefaultMsPerColumn ? effectiveMsPerColumn : null,
   };
 }

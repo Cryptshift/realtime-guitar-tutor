@@ -1,7 +1,6 @@
 // Per-frame listening loop: read audio, detect, score, render.
 import { renderGuideTone } from './audioEngine.js';
 import { computeRms, detectPitch } from './dsp/pitch.js';
-import { renderFingerPlacement } from './instruments/guitar/fretboard.js';
 import { frequencyToFractionalMidi } from './music.js';
 import {
   renderDetected,
@@ -9,6 +8,7 @@ import {
   renderStandaloneTuner,
   renderTarget,
 } from './render/status.js';
+import { renderInstrumentPanel } from './render/instrumentPanel.js';
 import { renderTabs } from './render/tabs.js';
 import {
   MAX_SCORING_FRAME_DELTA_MS,
@@ -44,7 +44,7 @@ export function tick() {
   }
 
   const rms = computeRms(state.data);
-  const pitch = detectPitch(state.data, state.audioCtx.sampleRate);
+  const pitch = detectPitch(state.data, state.audioCtx.sampleRate, state.instrument.detector);
   const liveFrequency = pitch?.frequency || null;
   const onsetMs = state.onsetDetector.update({
     rms,
@@ -65,7 +65,7 @@ export function tick() {
   renderMicStatus(rms, liveFrequency);
   renderDetected(detectedFrequency);
   renderStandaloneTuner(detectedFrequency);
-  renderFingerPlacement(targetNote, shiftedElapsedSeconds);
+  renderInstrumentPanel(targetNote, shiftedElapsedSeconds);
 
   if (state.listenMode === 'tuner') {
     dom.targetNote.textContent = '--';

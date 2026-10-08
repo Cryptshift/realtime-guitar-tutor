@@ -1,6 +1,6 @@
 // Builds and renders the position-change timeline.
-import { planStepLabel } from '../instruments/guitar/tabView.js';
 import { chordGroupBoundsAtIndex } from '../piece.js';
+import { chordGroupForNote } from '../scoring.js';
 import { dom, state } from '../state.js';
 import { clamp01, formatClock } from '../util.js';
 
@@ -10,6 +10,10 @@ export function resetTimelineCaches() {
   state.timelineVisualTime = null;
   state.timelineVisualLastMs = 0;
   state.fingerboardSignature = '';
+}
+
+function groupLabel(note) {
+  return note ? state.instrument.describeGroup(note, chordGroupForNote(note)) : '--';
 }
 
 export function buildTimelineSegments(notes) {
@@ -43,7 +47,7 @@ export function buildTimelineSegments(notes) {
       : totalDuration;
     const start = Math.max(0, anchorNote.start);
     const end = Math.max(start + 0.06, Number.isFinite(nextStart) ? nextStart : totalDuration);
-    const label = planStepLabel(anchorNote);
+    const label = groupLabel(anchorNote);
 
     if (segments.length > 0 && segments.at(-1).label === label) {
       segments.at(-1).end = end;
@@ -63,7 +67,7 @@ export function buildTimelineSegments(notes) {
     segments.push({
       start: 0,
       end: totalDuration,
-      label: planStepLabel(notes[0]),
+      label: groupLabel(notes[0]),
       anchorIndex: 0,
     });
   }

@@ -5,6 +5,7 @@ export const MIN_PITCH_CLARITY = 0.7;
 
 export const MPM_PEAK_THRESHOLD = 0.9;
 
+// Default search range when no instrument hint is given.
 export const PITCH_MIN_HZ = 60;
 
 export const PITCH_MAX_HZ = 1400;
@@ -25,10 +26,16 @@ export function computeRms(buf) {
 // short lags (raw ACF read low strings 5-12 cents sharp) and its peaks are directly
 // comparable: we take the first key maximum within MPM_PEAK_THRESHOLD of the highest one,
 // which avoids both harmonic (octave-up) and sub-harmonic (octave-down) errors.
-// Only lags for PITCH_MIN_HZ..PITCH_MAX_HZ (the guitar range) are evaluated.
+// Only lags for the requested frequency range (instrument.detector) are evaluated.
 export const pitchScratch = { x: new Float32Array(0), nsdf: new Float64Array(0) };
 
-export function detectPitch(buf, sampleRate) {
+// `range` limits the lags searched; pass the active instrument's detector hints
+// (instrument.detector). The default suits instruments in roughly the guitar register.
+export const DEFAULT_PITCH_RANGE = Object.freeze({ minHz: PITCH_MIN_HZ, maxHz: PITCH_MAX_HZ });
+
+export function detectPitch(buf, sampleRate, range = DEFAULT_PITCH_RANGE) {
+  const minHz = range?.minHz ?? PITCH_MIN_HZ;
+  const maxHz = range?.maxHz ?? PITCH_MAX_HZ;
   const size = buf.length;
   if (size < 4 || !Number.isFinite(sampleRate) || sampleRate <= 0) return null;
 
@@ -47,8 +54,8 @@ export function detectPitch(buf, sampleRate) {
   }
   if (Math.sqrt(energy / size) < MIN_SIGNAL_RMS) return null;
 
-  const minLag = Math.max(2, Math.floor(sampleRate / PITCH_MAX_HZ));
-  const maxLag = Math.min(size - 2, Math.ceil(sampleRate / PITCH_MIN_HZ));
+  const minLag = Math.max(2, Math.floor(sampleRate / maxHz));
+  const maxLag = Math.min(size - 2, Math.ceil(sampleRate / minHz));
   if (maxLag <= minLag) return null;
   const lagCount = maxLag + 2;
   if (pitchScratch.nsdf.length < lagCount) pitchScratch.nsdf = new Float64Array(lagCount);
@@ -101,7 +108,7 @@ export function detectPitch(buf, sampleRate) {
   if (!Number.isFinite(period) || period <= 0 || clarity < MIN_PITCH_CLARITY) return null;
 
   const frequency = sampleRate / period;
-  if (!Number.isFinite(frequency) || frequency < PITCH_MIN_HZ || frequency > PITCH_MAX_HZ) return null;
+  if (!Number.isFinite(frequency) || frequency < minHz || frequency > maxHz) return null;
 
   return { frequency, confidence: clarity };
 }

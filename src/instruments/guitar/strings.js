@@ -48,3 +48,21 @@ export function tabPositionsForMidi(midi, maxFret = MAX_FRET_FOR_BEGINNER_TAB) {
   const beginnerPositions = allPositions.filter((position) => !position.isExtended);
   return beginnerPositions.length > 0 ? beginnerPositions : allPositions;
 }
+
+// Instrument hook: where to play a note. A valid explicit `tab` from the piece JSON wins,
+// otherwise the easiest position (lowest fret, prefer lower strings) is chosen.
+export function placeGuitarNote(rawNote, midi) {
+  const inferredTabs = tabPositionsForMidi(midi);
+  const explicit = rawNote?.tab;
+  const preferredTab = isValidTab(explicit)
+    ? {
+      string: explicit.string,
+      fret: explicit.fret,
+      isExtended: explicit.fret > MAX_FRET_FOR_BEGINNER_TAB,
+      chordSize: Number.isFinite(explicit.chordSize) ? explicit.chordSize : 1,
+      chordIndex: Number.isFinite(explicit.chordIndex) ? explicit.chordIndex : 0,
+      isChordTone: Boolean(explicit.isChordTone) || (Number.isFinite(explicit.chordSize) && explicit.chordSize > 1),
+    }
+    : inferredTabs[0] || null;
+  return { tab: preferredTab, tabAlternatives: inferredTabs };
+}

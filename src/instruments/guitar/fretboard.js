@@ -1,14 +1,6 @@
 // Guitar fretboard (finger placement) view.
 import { GUITAR_STRINGS } from './strings.js';
 import { tabSummary, tabbedNotesFromGroup } from './tabView.js';
-import { nextUpcomingNote } from '../../render/status.js';
-import {
-  chordGroupForNote,
-  isChordStepMode,
-  stepGroupBoundsForNote,
-  stepGroupNotesForTarget,
-} from '../../scoring.js';
-import { dom, state } from '../../state.js';
 
 export function suggestedFingerMapForGroup(groupNotes) {
   const fingerMap = new Map();
@@ -48,70 +40,25 @@ export function fingerboardRangeForGroup(groupNotes) {
   };
 }
 
-export function renderFingerPlacement(targetNote, shiftedElapsedSeconds) {
-  if (!dom.fingerboard || !dom.fingeringTarget || !dom.fingeringHint || !dom.fingeringLegend || !dom.fingeringNext) {
-    return;
-  }
-  if (state.sidePanelMode !== 'fingering') return;
-
-  if (state.listenMode === 'tuner') {
-    dom.fingeringTarget.textContent = '--';
-    dom.fingeringHint.textContent = 'Tuner listening mode is active. Stop tuner mode to follow song placement.';
-    dom.fingeringLegend.textContent = 'Finger guide is paused while tuner mode is active.';
-    dom.fingeringNext.textContent = 'Next: --';
-    dom.fingerboard.innerHTML = '';
-    state.fingerboardSignature = 'tuner-paused';
-    return;
-  }
-
-  const focusNote = targetNote || (state.practiceMode === 'timed'
-    ? nextUpcomingNote(shiftedElapsedSeconds)
-    : (state.activePiece?.notes?.[state.stepIndex] || null));
-  if (!focusNote) {
-    dom.fingeringTarget.textContent = '--';
-    dom.fingeringHint.textContent = 'No active placement right now.';
-    dom.fingeringLegend.textContent = 'Finger numbers are suggested (1=index ... 4=pinky).';
-    dom.fingeringNext.textContent = 'Next: --';
-    dom.fingerboard.innerHTML = '';
-    state.fingerboardSignature = 'no-focus';
-    return;
-  }
-
-  const focusGroup = state.practiceMode === 'step'
-    ? stepGroupNotesForTarget(focusNote)
-    : chordGroupForNote(focusNote);
-  const tabbed = tabbedNotesFromGroup(focusGroup);
-  let nextNote = null;
-  if (state.practiceMode === 'step') {
-    if (isChordStepMode()) {
-      const { endIndex } = stepGroupBoundsForNote(focusNote);
-      nextNote = state.activePiece?.notes?.[endIndex + 1] || null;
-    } else {
-      nextNote = state.activePiece?.notes?.[state.stepIndex + 1] || null;
-    }
-  } else {
-    nextNote = nextUpcomingNote(shiftedElapsedSeconds);
-  }
-  const nextSummary = nextNote ? tabSummary(nextNote) : '--';
-  const positionsSignature = tabbed.map((note) => `${note.tab.string}:${note.tab.fret}`).join('|');
-  const signature = `${focusNote.index}|${positionsSignature}|${nextSummary}|${state.practiceMode}|${state.stepIndex}`;
-
-  if (signature === state.fingerboardSignature) {
-    return;
-  }
-  state.fingerboardSignature = signature;
+// Instrument hook: draws the fretboard for the current note group into `container` and
+// returns the panel texts. `current`/`upcoming` are { note, group } or null.
+export function renderFretboardView(container, { current, upcoming }) {
+  const nextSummary = upcoming ? tabSummary(upcoming.note, upcoming.group) : '--';
+  const focusNote = current.note;
+  const tabbed = tabbedNotesFromGroup(current.group);
 
   if (!tabbed.length) {
-    dom.fingeringTarget.textContent = focusNote.note || '--';
-    dom.fingeringHint.textContent = 'No mapped string/fret for this note.';
-    dom.fingeringLegend.textContent = 'Try loading tabs with fret positions.';
-    dom.fingeringNext.textContent = `Next: ${nextSummary}`;
-    dom.fingerboard.innerHTML = '';
-    return;
+    container.innerHTML = '';
+    return {
+      target: focusNote.note || '--',
+      hint: 'No mapped string/fret for this note.',
+      legend: 'Try loading tabs with fret positions.',
+      next: nextSummary,
+    };
   }
 
-  const fingerMap = suggestedFingerMapForGroup(focusGroup);
-  const { startFret, endFret } = fingerboardRangeForGroup(focusGroup);
+  const fingerMap = suggestedFingerMapForGroup(current.group);
+  const { startFret, endFret } = fingerboardRangeForGroup(current.group);
   const markerByPosition = new Map();
   tabbed.forEach((note) => {
     markerByPosition.set(`${note.tab.string}:${note.tab.fret}`, {
@@ -145,7 +92,7 @@ export function renderFingerPlacement(targetNote, shiftedElapsedSeconds) {
     rows.push(`<tr><th>${guitarString.label}</th>${cells.join('')}</tr>`);
   });
 
-  dom.fingerboard.innerHTML = `
+  container.innerHTML = `
     <table class="fingerboard-table">
       <thead>
         <tr><th>Str</th>${headerCells.join('')}</tr>
@@ -154,16 +101,17 @@ export function renderFingerPlacement(targetNote, shiftedElapsedSeconds) {
     </table>
   `;
 
-  const placementSummary = tabbed.map((note) => `S${note.tab.string} F${note.tab.fret}`).join(' + ');
-  dom.fingeringTarget.textContent = placementSummary;
-  dom.fingeringHint.textContent = tabbed.length > 1
-    ? 'Press these strings together.'
-    : `Press ${tabbed[0].note} on string ${tabbed[0].tab.string}, fret ${tabbed[0].tab.fret}.`;
-  dom.fingeringLegend.textContent = tabbed
-    .map((note) => {
-      const finger = fingerMap.get(`${note.tab.string}:${note.tab.fret}`) || '?';
-      return `S${note.tab.string} F${note.tab.fret}: finger ${finger}`;
-    })
-    .join(' | ');
-  dom.fingeringNext.textContent = `Next: ${nextSummary}`;
+  return {
+    target: tabbed.map((note) => `S${note.tab.string} F${note.tab.fret}`).join(' + '),
+    hint: tabbed.length > 1
+      ? 'Press these strings together.'
+      : `Press ${tabbed[0].note} on string ${tabbed[0].tab.string}, fret ${tabbed[0].tab.fret}.`,
+    legend: tabbed
+      .map((note) => {
+        const finger = fingerMap.get(`${note.tab.string}:${note.tab.fret}`) || '?';
+        return `S${note.tab.string} F${note.tab.fret}: finger ${finger}`;
+      })
+      .join(' | '),
+    next: nextSummary,
+  };
 }
