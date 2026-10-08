@@ -126,46 +126,66 @@ Choices are stored in `localStorage`.
   - backing-track file.
 - **Re-run setup.**
 
-## Design tokens
+## Design tokens: "practice room"
 
-- **Surfaces (dark):**
+The look is manuscript paper, pencil ink, one vermilion pencil mark, and real instrument materials. It should feel warm and tactile, not like a tech product.
 
-  | Token | Value |
-  | --- | --- |
-  | bg | `#0e1318` |
-  | surface | `#161d24` |
-  | raised | `#1f2831` |
-  | border | `#2c3742` |
-  | text | `#eef2f5` |
-  | muted | `#a3b1bd` |
+Hard rules:
 
-- **Surfaces (light):**
+- No gradients, glows, blur or neon.
+- Flat surfaces with 1px borders.
+- Radii of 4–6px.
+- Only dialogs cast a shadow.
 
-  | Token | Value |
-  | --- | --- |
-  | bg | `#f5f7f9` |
-  | surface | `#ffffff` |
-  | raised | `#eef2f5` |
-  | border | `#d5dde4` |
-  | text | `#101820` |
-  | muted | `#4a5865` |
+All colours are defined in the token blocks at the top of `src/styles.css`. `npm run check:contrast` verifies every pair and fails if a colour value appears anywhere else.
 
-- **Accent and state colours.** Each state is always paired with an icon.
+| Token | Paper (light) | Stage (dark) |
+| --- | --- | --- |
+| bg | #F3EEE4 | #171411 |
+| surface | #FBF8F2 | #201C18 |
+| raised | #EAE3D6 | #2A2520 |
+| sunken | #E4DCCD | #110F0D |
+| border | #D6CCBA | #3A332B |
+| border-strong | #948874 | #776E62 |
+| text | #1E1B16 | #F1E9DC |
+| muted | #5E5648 | #B3A794 |
+| accent (vermilion) / on-accent | #BE402C / #FFF8F0 | #E8553D / #1A0D08 |
+| hit (✓) | #2E6B3F | #8DC47E |
+| close (~) | #A86A12 | #E0A84A |
+| miss (✗, graphite, never red) | #7A7166 | #8A8073 |
 
-  | Role | Dark | Light |
-  | --- | --- | --- |
-  | Accent | `#3ddc97` (text on it `#04261a`) | `#04704c` |
-  | Hit | `#3ddc97` + ✓ | |
-  | Close | `#f7c548` + arrows | `#8a5a00` |
-  | Miss | `#ff7a7a` + ✕ | `#b42318` |
-  | Upcoming | `#6cb4ff` | `#1d5fbf` |
+Notes on the table:
 
-- **Type:** system UI stack (no web-font requests), tabular numbers.
-  - Scale: 14 / 16 / 18 / 22 / 28 / 36 / 48 px.
-  - The current note uses `clamp(72px, 14vw, 160px)`.
-- **Spacing and shape:**
-  - Spacing scale: 4 / 8 / 12 / 16 / 24 / 32 / 48 px.
-  - Radii: 8 / 12 / 16.
-  - Touch targets are at least 44 px.
-  - The focus ring is a 3 px accent outline.
-- **Motion:** 150–250 ms ease-out; none under `prefers-reduced-motion`.
+- **border-strong:** the original #A89B84 (light) and #574D41 (dark) were darkened and lightened respectively to reach 3:1.
+- **accent:** the light accent was #C2412D; it was darkened slightly to reach 4.5:1 on the background.
+
+**Materials** (the same in both themes):
+
+| Material | Colour | Used for |
+| --- | --- | --- |
+| Rosewood | #3B2418 | Fretboard |
+| Bone | #E9E0CC | Nut, inlays, outlines |
+| Nickel | #B8B2A6 | Frets |
+| Bronze | #C9A66B | Wound strings |
+| Steel | #D9D9D6 | Plain strings |
+| Ivory | #F7F1E3 | White keys |
+| Ebony | #1A1714 | Black keys |
+
+**Accent and states:**
+
+- The current note, the active key and the hit line use the accent.
+- Upcoming notes are ink or cream outlines.
+
+**Type:**
+
+- Fraunces (600/700) for headings and the big current-note readout.
+- IBM Plex Mono (500/600) for tab numbers, key names and note lists.
+- system-ui for body text.
+- The fonts are self-hosted with `@fontsource`.
+
+**Theme:** follows the device by default; Settings can force Paper or Stage.
+
+**Motion:**
+
+- 150–250 ms ease-out.
+- None under `prefers-reduced-motion`, except the highway, which is content.

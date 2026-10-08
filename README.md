@@ -1,10 +1,10 @@
-# Realtime Guitar Song Learner
+# Realtime Tutor
 
-A browser app that listens to your guitar through the microphone and tells you, note by note, whether you're playing the right pitch at the right time. It shows beginner-friendly tabs, has a standalone tuner, and can turn tab pages, pasted ASCII tab, or a guitar recording into a playable exercise.
+Learn songs on **guitar, bass, ukulele or piano**. The app listens through your microphone (or a MIDI keyboard) and tells you note by note whether you played the right pitch, and in Play along whether you played it on time. It is built for a beginner practising alone with a laptop, tablet or phone on a music stand.
 
 **Live demo:** https://cryptshift.github.io/realtime-guitar-tutor/
 
-Everything runs locally in the browser (Vite + vanilla JS, no backend). The one exception is **URL import**, which goes through third-party CORS proxies (see [Importing tabs](#importing-tabs)).
+Everything runs in the browser (Vite + vanilla JS, no backend). The one exception is **tab-link import**, which goes through third-party CORS proxies (see [Adding songs](#adding-songs)).
 
 ## Quick start
 
@@ -13,7 +13,15 @@ npm install
 npm run dev        # open the printed localhost URL
 ```
 
-Allow microphone access, pick a piece, and click **Start Listening**. Microphone access needs a secure context (`https://` or `localhost`).
+The first visit runs a short setup:
+
+1. Pick your instrument.
+2. Allow the microphone (or choose a MIDI keyboard).
+3. Play any note to check the input.
+4. Optionally line up the timing with 4 clicks.
+5. Tune up.
+
+You can re-run setup from **Settings**. Microphone access needs a secure context (`https://` or `localhost`).
 
 | Script | What it does |
 | --- | --- |
@@ -21,171 +29,207 @@ Allow microphone access, pick a piece, and click **Start Listening**. Microphone
 | `npm run build` | Production build to `dist/` |
 | `npm run preview` | Serve the production build |
 | `npm test` | Vitest unit tests (`npm run test:watch` to watch) |
+| `npm run check:contrast` | WCAG contrast check of the colour tokens, plus a check that no colour values exist outside them |
 
-## Features
+## Using it
 
-### Practice modes
+### Library
 
-- **Timed Playthrough**: the piece plays on a clock. A note counts when you play the right pitch (within 35 cents) **and** your pluck starts within ±200 ms of the note's start. The window narrows to half the gap between neighbouring notes in fast passages, with a 60 ms minimum. **Timing accuracy** scores how close each note start was, and hits show "N ms early/late".
-  - **BPM** slider: changes the tempo from the current position (it no longer jumps the playhead).
-  - **Timing Offset** slider: compensates for your audio input latency. If hits keep reading "late", move it negative.
-  - **Guide Tone**: plays a quiet sine at the target pitch. Use headphones, because the microphone is opened without echo cancellation and would otherwise hear it.
-- **Step-by-Step Learn**: no clock. The piece waits on each note until you play it, and every step needs a fresh pluck (or a hammer-on/slide to the new pitch). A ringing note can't clear the next identical note.
-- **Space** restarts the piece (when focus isn't in a form field).
+- Continue where you left off.
+- Filter by instrument and level.
+- Open a song.
+- Songs show their length and your best stars.
+- Built-in songs are traditional or public domain:
+  - Twinkle Twinkle Little Star, Mary Had a Little Lamb, Ode to Joy.
+  - Open-string warm-ups.
+  - A 12-bar blues bass line.
+  - The openings of Für Elise and the Minuet in G (piano, right hand, with fingering).
 
-### Tabs and fingering
+### Practice
 
-- **Beginner simplify** (default) turns chords into a fast arpeggio of single notes.
-- Unchecking it keeps chords (*post-beginner* mode). In step mode you can then require the **full shape** before advancing; this uses a heuristic spectral match.
-- The tab panel shows a fret-change timeline plus previous / current / next tab diagrams. **Show Finger Placement** swaps the right panel to a fretboard with suggested fingers.
+One main button: **Start/Pause** (or **Space**). Two modes:
 
-### Standalone tuner
+- **Wait for me** (default): each note, or each chord shape, waits until you play it with a fresh attack. Playing the first note starts the run.
+- **Play along**: the song runs at your tempo (50–120%, new songs start at 70%) with an optional count-in and metronome. A note counts if you start it within ±200 ms of its start (narrower in fast passages). Results show how early or late you were.
 
-- Tuning sets: Standard, Drop D, D Standard, Open G.
-- Shows cents sharp/flat and **IN TUNE** within ±5 cents. If the detector locks onto a harmonic an octave away, the reading is folded back onto the target.
+On screen:
 
-### Backing track
+- **The current note** in large type, with where to play it ("String 3 (G), fret 2 · finger 2", or the key and finger on piano).
+- **A note highway**: one lane per string, or per pitch on piano. It is labelled with fret numbers or key names.
+- **The instrument view**: a fretboard with finger numbers (with a left-handed option), or a keyboard fitted to the song's range.
+- **Plain-language feedback**, for example:
+  - "You played F, aim for E: one fret lower";
+  - "the key just to the left";
+  - "A little sharp".
+  - An intonation needle and an "N in a row" counter.
+- **Loops**: choose a section on the progress bar, or drag across it to loop bars A–B.
 
-Load a local audio file, set its volume, and optionally start it together with **Start Listening**. The file never leaves the browser.
+Shortcuts:
 
-### Custom pieces
+| Key | Action |
+| --- | --- |
+| Space | Start / pause |
+| R | Restart |
+| W | Switch mode |
+| [ ] | Tempo |
+| M | Metronome |
+| C | Count-in |
+| L | Clear loop |
+| Esc | Finish |
+| ? | Help |
 
-The **Custom Piece** box accepts JSON or plain ASCII tab.
+**More** holds the backing track (a local audio file played at your tempo) and the guide tone (use headphones).
+
+### Results
+
+- Accuracy and stars, timing and an early/late tendency, and the trickiest notes.
+- **Practice the tricky part**: loops the weakest bar at −20% tempo.
+- A suggested next step.
+- Best scores and history are saved in the browser.
+
+### Tuner
+
+A large needle with "Too high: loosen the string" / "Too low: tighten the string". String chips (or Auto), and tunings per instrument (guitar: Standard, Drop D, D Standard, Open G). It is hidden for piano.
+
+### Settings
+
+- Instrument.
+- Microphone or MIDI device. MIDI is hidden where the browser lacks Web MIDI, e.g. Safari.
+- Latency: calibrate or use the slider.
+- Guide tone and backing-track volumes.
+- Theme: match the device, Paper (light) or Stage (dark).
+- Left-handed fretboard and key labels.
+- Practice defaults.
+- Chord options.
+
+## Adding songs
+
+**Add a song** collects every import path. Added songs are saved in the browser.
+
+- **Tab link**:
+  - **Ultimate Guitar**: the tab is read from the page's embedded `.js-store` JSON (tab text, tuning, capo).
+  - **Other sites**: the smallest page element that contains the most tab lines.
+  - **Privacy**: browsers block cross-origin fetches, so the link is fetched through third-party CORS proxies, [api.allorigins.win](https://allorigins.win) and [r.jina.ai](https://jina.ai/reader). They see the URL; nothing else is sent.
+- **Paste tab**: ASCII tab for guitar (6 lines), bass or ukulele (4 lines). It is read by line position, so duplicate `E` labels, drop-D labels, lowercase or missing labels and `| x2` annotations all work.
+- **MIDI file**: pick a track (the busiest non-drum track is the default) and optionally quantise to 1/4, 1/8 or 1/16.
+- **From a recording**: a clean single-note recording is transcribed in a Web Worker, with progress and Cancel.
+- **Advanced (JSON)**: an array of `{ note, start, duration }` (seconds), or `{ name, bpm, notes }`. Each note may also have:
+  - `tab: { string, fret }`;
+  - `finger`;
+  - `hand` (`L`/`R`).
+
+  Pieces also record their `instrument`.
 
 ```json
 [
   { "note": "E4", "start": 0.0, "duration": 0.5, "tab": { "string": 1, "fret": 0 } },
-  { "note": "F#4", "start": 0.5, "duration": 0.5 }
+  { "note": "F4", "start": 0.5, "duration": 0.5, "finger": 2 }
 ]
 ```
-
-Other accepted forms:
-
-- An object: `{ "name": "My Piece", "bpm": 110, "notes": [ ... ] }`.
-- A ```` ```json ```` fenced block.
-- `{ "piece": { "notes": [...] } }`.
-
-`tab` is optional; without it the easiest string/fret position is inferred. Notes outside the guitar's range are skipped and listed as "unplayable".
-
-Pasted **ASCII tab** is converted using the *ms per tab column* value. If that field is left at its default, a BPM found in the text is used instead.
-
-### Importing tabs
-
-Paste a tab URL and click **Import From URL**.
-
-- **Ultimate Guitar**: the tab is read from the page's embedded `.js-store` JSON (tab text, tuning, capo).
-- **Other sites**: the app uses the smallest page element that contains the most tab lines.
-- **Tab parser**: reads 6-line systems by position (top line = high e). It handles duplicate `E` labels, alternate-tuning labels (e.g. drop D's low `D`), lowercase or missing labels, `D#|`/`Eb|` labels and `| x2` annotations. If the labels spell a non-standard tuning and the page gives none, the labels set the tuning.
-
-**Privacy note:** browsers block cross-origin page fetches, so the URL you paste is fetched through third-party CORS proxies, [api.allorigins.win](https://allorigins.win) and [r.jina.ai](https://jina.ai/reader). They see the URL you import. Order:
-
-- Ultimate Guitar URLs (which send no CORS headers): allorigins first, then jina.
-- Other URLs: a direct fetch first, then allorigins, then jina.
-
-Nothing else is sent anywhere. If the proxies fail, copy the tab text and paste it into the Custom Piece box.
-
-### Generate tabs from audio
-
-Upload a clean, **monophonic** guitar recording to get a single-note exercise with an estimated BPM.
-
-- Re-plucked repeated notes are kept as separate notes.
-- Analysis runs in a Web Worker, so the page stays responsive. A progress bar tracks it and **Cancel audio analysis** stops it. A 3-minute song takes a few seconds.
 
 ## How it works
 
 ### Audio pipeline
 
 ```
-mic -> MediaStreamSource -> capture AudioWorklet --frames--> detector Web Worker --results--> main thread
-                         \-> AnalyserNode (spectrum, chord mode only)
+mic -> MediaStreamSource -> capture AudioWorklet --frames--> detector Web Worker --results--> page
+MIDI keyboard (Web MIDI) ----------------------------------------- note on/off ------------> page
 ```
 
-- **`src/audio/capture.worklet.js`** (audio thread). Copies the input into a ring buffer and, every 256 samples (~5 ms), posts the latest 2048-sample frame with its AudioContext time. It does no DSP. Frame buffers are recycled, so it never allocates on the audio thread.
-- **`src/audio/detector.worker.js`** (worker). Runs pitch and onset detection for each frame and posts a small result: level, frequency, clarity and onset time. The worklet and the worker talk over a `MessageChannel`, so audio frames never reach the page.
-- **Main thread** (`src/loop.js`):
-  - Scores each result as it arrives, using audio-clock timestamps.
-  - Renders once per animation frame.
-  - Only writes DOM text and values that changed.
-  - While listening it uses about 6 ms of main-thread time per second, down from about 100 ms when detection ran there.
-- **Pitch detection** (`src/dsp/pitch.js`): McLeod Pitch Method, a normalized square difference function. It searches the instrument's frequency range (guitar: 60–1400 Hz), takes the first key maximum within 90% of the highest, and refines it with parabolic interpolation. On synthetic E2–E6 tones it is within 0.2 cents with no octave errors, and it stays silent on white noise.
-- **Note onsets** (`src/dsp/onset.js`): a detector fires on a level jump over the recent minimum (a pluck or re-pluck) or on a newly stable pitch (legato or a soft start). Onsets drive the timing score and the fresh-pluck rule.
-- **Microphone**: opened with echo cancellation, noise suppression and auto-gain **off**. Those speech filters damp sustained notes.
-- **Audio-to-tab** (`src/audio/audioToTab.worker.js`): the same detectors run offline over a decoded file in a worker.
+- **Capture worklet** (`src/audio/capture.worklet.js`, audio thread): copies the input. Every 256 samples (~5 ms) it posts the latest analysis frame, timestamped with the AudioContext clock. It does no DSP and never allocates.
+- **Detector worker** (`src/audio/detector.worker.js`): runs pitch (McLeod Pitch Method) and onset detection using the instrument's frequency range.
+  - Guitar: 60–1400 Hz.
+  - Bass: 34–500 Hz.
+  - Ukulele: 150–1600 Hz.
+  - Piano: 50–2200 Hz.
+- **Page**: `src/practice/session.js` scores each result as it arrives. The screen renders once per animation frame.
+- **MIDI input**: skips detection entirely, so note-on gives exact pitch and timing, and chords are checked key by key.
+- **Microphone settings**: echo cancellation, noise suppression and auto-gain are **off**, because those speech filters damp sustained notes.
 
 ### Modules
 
 ```
-src/main.js                 entry: DOM events, init
-src/state.js                shared state + DOM element registry
-src/loop.js                 analysis-result handling and render loop
-src/audioEngine.js          mic start/stop (worklet + worker), guide tone, backing track
-src/audio/                  capture worklet, detector worker, audio-to-tab worker
-src/dsp/                    pitch (MPM), onset, chord spectrum
-src/scoring.js              targets, onsets, hit/step logic, feedback
-src/clock.js                tempo-aware piece clock
-src/piece.js                piece model, normalization, custom JSON/text input
-src/music.js                note names, MIDI, cents, pitch classes
-src/render/                 status, tab slots, timeline, instrument panel
-src/controls.js             control-panel actions (modes, BPM, tuner selects, restart)
-src/importPanel.js          URL import, audio-to-tab, custom piece loading
-src/import/                 page fetching via CORS proxies, BPM metadata
-src/instruments/index.js    instrument registry and interface
-src/instruments/guitar/     strings/frets, tunings, tab parser, page import, tab text, fretboard view
+src/main.js                  app shell (header, theme) and router
+src/app/                     shared context (settings, storage, library, audio engine), router
+src/screens/                 library, add-song dialog, practice, summary, tuner, settings, setup, calibration
+src/practice/                session engine (modes, hits, timing, loops), summary, note highway
+src/audio/                   audio engine, capture worklet, detector and audio-to-tab workers
+src/input/midi.js            Web MIDI input
+src/dsp/                     pitch (MPM), onsets, chord spectrum
+src/import/                  CORS-proxy fetch, BPM metadata, MIDI files, recording transcription
+src/instruments/             add-on registry: fretted (guitar, bass, ukulele) and piano
+src/piece.js, music.js       piece model and note maths
+src/songs/catalog.js         built-in songs
+src/storage.js               settings, user songs, scores (localStorage, failure-safe)
+src/ui/                      DOM helpers and icons
+src/styles.css               design tokens and components
 ```
 
-**Instruments.** Generic code reaches anything guitar-specific only through the interface in `src/instruments/index.js`, which covers:
+### Instrument add-ons
 
-- range and detector hints;
-- note placement and playability;
-- slot and timeline text;
-- the instrument view;
-- tuner sets;
-- text and page importers.
+`src/instruments/index.js` documents the interface. Each add-on supplies:
 
-A new instrument is a folder under `src/instruments/` plus one registry entry.
+- its range and detector hints;
+- note placement (strings/frets or keys) and fingering;
+- highway lanes;
+- its view (fretboard or keyboard);
+- hint wording;
+- tuner tunings, or none;
+- importers.
+
+Guitar, bass and ukulele are configurations of one fretted factory, and the ukulele's re-entrant high G is handled per string. A new instrument is a folder plus one registry entry.
+
+### Design
+
+The "practice room" theme is described in `docs/ux-redesign.md`.
+
+- Manuscript paper and pencil ink, with a single vermilion accent.
+- Instrument views in real materials: rosewood, bone, nickel, bronze, ivory and ebony.
+- Fraunces for headings and the big note, IBM Plex Mono for tab numbers, and system-ui for text. The fonts are self-hosted via `@fontsource` (OFL-1.1).
+- Colours live only in the token blocks at the top of `src/styles.css`. `npm run check:contrast` verifies every text and UI colour pair against WCAG AA in both themes.
+- Feedback always pairs a colour with a shape:
+  - ✓ correct;
+  - ~ close;
+  - ✗ or an arrow for wrong.
 
 ## Testing
 
 ```bash
-npm test             # Vitest: 62 unit tests
+npm test                 # Vitest: 100 unit tests
+npm run check:contrast   # colour-token contrast and stray-colour check
 ```
 
 The unit tests cover:
 
-- note/MIDI helpers and the tuner's octave folding;
-- the tempo clock;
-- the pitch detector, against synthetic tones and noise;
-- the onset detector, the audio-to-tab transcription and its progress reporting;
-- the ASCII tab parser and the Ultimate Guitar extractor;
-- BPM and custom-piece parsing;
-- the instrument registry, including a stand-in keyboard instrument.
+- the session engine in both modes, with MIDI and synthetic mic input;
+- the pitch and onset detectors;
+- instrument mapping (including the re-entrant ukulele), fingering, highway layouts and hint wording;
+- tab parsing for 4 and 6 strings and the Ultimate Guitar extractor;
+- MIDI file parsing, with tempo changes, running status and quantising;
+- Web MIDI input against a mock;
+- the summary, storage, the built-in songs and the tempo clock.
 
-End-to-end checks run in a real browser with a synthetic microphone. Start `npm run dev`, open the app, then in the devtools console:
+End-to-end flows run in a real browser against the dev server, with a synthetic microphone and a mock MIDI keyboard. Start `npm run dev`, open the app, and in the devtools console run:
 
 ```js
-await (await import('/tests/browser/fakeMicSuite.js')).runFakeMicSuite();
-await (await import('/tests/browser/measure.js')).measureLatency();
-await (await import('/tests/browser/audioToTabCheck.js')).checkAudioToTab({ seconds: 180 });
+const e2e = await import('/tests/browser/e2e.js');
+await e2e.onboarding();
+await e2e.guitarRun();
+await e2e.guitarPlayAlong();
+await e2e.pianoRun();
+await e2e.pianoPlayAlong();
 ```
-
-Together they cover:
-
-- timed and step scoring;
-- the tuner and the BPM slider;
-- the start guard and failure cleanup;
-- latency and main-thread cost;
-- audio-to-tab responsiveness and cancel.
 
 ## Deployment
 
-`.github/workflows/deploy.yml` builds and publishes `dist/` to GitHub Pages on every push to `main`: `npm ci`, `npm test`, `npm run build`, then upload and deploy. `vite.config.js` uses a relative `base`, so the build works under a project sub-path.
+`.github/workflows/deploy.yml` publishes `dist/` to GitHub Pages on every push to `main` (`npm ci`, `npm test`, `npm run build`, upload, deploy). `vite.config.js` uses a relative `base`, so the build, its fonts, the worklet and the workers all load from a project sub-path.
 
-## Tips and limitations
+## Limitations
 
-- Use a quiet room and a clean tone. Heavy reverb, distortion or other instruments confuse single-pitch detection.
-- Chord detection (post-beginner step mode) is a heuristic spectral check and can be lenient on low strings.
-- Imported and custom pieces live only for the session; reloading the page clears them.
-- Needs a browser with AudioWorklet and module Web Workers (current Chrome, Edge, Firefox and Safari).
+- **Microphone input is single-pitch.** Use a quiet room and a clean tone. With a microphone, chords are matched only approximately; a MIDI keyboard checks every key.
+- **Piano support is right hand first.** Two-hand pieces work, but pitch detection from a microphone is monophonic.
+- **Your data stays in this browser.** Library, scores and settings live in its local storage.
+- **Browser support:** needs AudioWorklet and module Web Workers (current Chrome, Edge, Firefox and Safari). Web MIDI works in Chromium-based browsers and Firefox.
 
 ## License
 
