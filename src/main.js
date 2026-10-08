@@ -782,15 +782,39 @@ function resetTaskProgress(progressEl) {
   progressEl.hidden = true;
 }
 
-function parseCustomPieceInput(raw) {
+// Converts pasted ASCII tab (any text with a full 6-line tab system) into a piece.
+function parsePastedTab(text, { msPerColumn = DEFAULT_TAB_MS_PER_COLUMN, simplifyToSingleNotes = true } = {}) {
+  const tuning = parseTuningFromText(text, { allowBare: false });
+  const bpm = parseBpmFromText(text, { allowBare: false });
+  const effectiveMsPerColumn = bpm && msPerColumn === DEFAULT_TAB_MS_PER_COLUMN
+    ? bpmToMsPerColumn(bpm, DEFAULT_COLUMNS_PER_BEAT)
+    : msPerColumn;
+  const piece = parseTabTextToPiece(
+    text,
+    effectiveMsPerColumn,
+    'Pasted Tab',
+    tuning?.openMidiByString || null,
+    bpm,
+    { simplifyToSingleNotes },
+  );
+  return { ...piece, importedFrom: 'ascii-tab' };
+}
+
+// Accepts piece JSON (array or { notes }), optionally in a ```json fence, or raw ASCII tab.
+function parseCustomPieceInput(raw, tabOptions = {}) {
   const trimmed = raw.trim();
   if (!trimmed) {
     throw new Error('Custom piece is empty');
   }
 
   // Accept pasted markdown code fences like ```json ... ```
-  const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const fencedMatch = trimmed.match(/^```(?:json|text|txt)?\s*([\s\S]*?)\s*```$/i);
   const candidate = fencedMatch ? fencedMatch[1].trim() : trimmed;
+
+  const looksLikeJson = /^[[{]/.test(candidate);
+  if (!looksLikeJson && countTabLines(candidate) >= 6) {
+    return parsePastedTab(candidate, tabOptions);
+  }
 
   const parseAttempts = [candidate];
   const firstObj = candidate.indexOf('{');
@@ -816,7 +840,10 @@ function parseCustomPieceInput(raw) {
   }
 
   if (parsed === null) {
-    throw new Error(lastError?.message || 'Could not parse JSON');
+    if (countTabLines(candidate) >= 6) {
+      return parsePastedTab(candidate, tabOptions);
+    }
+    throw new Error(`${lastError?.message || 'Could not parse JSON'} (and no 6-line ASCII tab system was found)`);
   }
 
   if (Array.isArray(parsed)) {
@@ -1298,9 +1325,6 @@ function extractTuningMetadata(rawText, doc) {
   const sources = [];
   if (doc) {
     const tuningSelectors = [
-      { selector: '.c4glK', allowBare: true },
-      { selector: '[class~="c4glK"]', allowBare: true },
-      { selector: '[class*="c4glK"]', allowBare: true },
       { selector: '[data-testid*="tuning"]', allowBare: true },
       { selector: '[data-testid*="Tuning"]', allowBare: true },
       { selector: '[class*="tuning"]', allowBare: true },
@@ -1373,139 +1397,213 @@ function extractBpmMetadata(rawText, doc) {
   return null;
 }
 
+// Ultimate Guitar ships the tab as JSON in <div class="js-store" data-content="...">
+// (store.page.data.tab_view): wiki_tab.content uses [tab]/[ch] markup, meta.tuning.value
+// is low-to-high ("D A D G B E"), meta.capo is optional.
+function findNestedKey(value, key, depth = 0) {
+  if (!value || typeof value !== 'object' || depth > 8) return undefined;
+  if (Object.hasOwn(value, key)) return value[key];
+  for (const child of Object.values(value)) {
+    const found = findNestedKey(child, key, depth + 1);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+function stripTabMarkup(text) {
+  return String(text)
+    .replace(/\r\n?/g, '\n')
+    .replace(/\[\/?(?:tab|ch)\]/gi, '');
+}
+
+function extractUltimateGuitarTab(doc) {
+  const storeEl = doc.querySelector('.js-store[data-content]');
+  if (!storeEl) return null;
+
+  let data;
+  try {
+    data = JSON.parse(storeEl.getAttribute('data-content'));
+  } catch {
+    return null;
+  }
+
+  const tabView = data?.store?.page?.data?.tab_view || findNestedKey(data, 'tab_view');
+  const content = tabView?.wiki_tab?.content;
+  if (typeof content !== 'string' || !content.trim()) return null;
+
+  const meta = tabView.meta || {};
+  const tuningValue = typeof meta.tuning?.value === 'string' ? meta.tuning.value : null;
+  const tuning = tuningValue ? parseTuningFromText(tuningValue, { allowBare: true }) : null;
+  const capo = Number(meta.capo);
+  const bpm = parseBpmFromText(String(meta.bpm ?? ''), { allowBare: true });
+
+  return {
+    tabText: stripTabMarkup(content),
+    tuning: tuning ? { ...tuning, source: 'Ultimate Guitar meta' } : null,
+    bpm: bpm ? { bpm, source: 'Ultimate Guitar meta' } : null,
+    capo: Number.isInteger(capo) && capo > 0 && capo < 13 ? capo : 0,
+  };
+}
+
+function countTabLines(text) {
+  return String(text || '').split('\n').reduce((count, line) => count + (parseTabLine(line) ? 1 : 0), 0);
+}
+
 function extractTabImportData(rawText) {
   if (!rawText || typeof rawText !== 'string') {
     throw new Error('Fetched page was empty');
   }
 
-  const tabLinePattern = /^[ \t]*[eEADGBeB][ \t]*\|/m;
   const looksLikeHtml = /<[a-z!/][^>]*>/i.test(rawText);
-  if (tabLinePattern.test(rawText) && !looksLikeHtml) {
+  if (!looksLikeHtml && countTabLines(rawText) >= 6) {
     return {
-      tabText: rawText,
+      tabText: stripTabMarkup(rawText),
       tuning: parseTuningFromText(rawText, { allowBare: false }),
       bpm: parseBpmFromText(rawText, { allowBare: false }),
+      capo: 0,
     };
   }
 
   const parser = new DOMParser();
   const doc = parser.parseFromString(rawText, 'text/html');
-  const candidates = [];
-  const selectors = [
-    '.k_vI3.WptWb.fGc1h',
-    '[class~="k_vI3"][class~="WptWb"][class~="fGc1h"]',
-    'pre',
-    'code',
-    '.js-tab-content',
-    '[class*="tab"]',
-    'article',
-    'main',
-  ];
 
+  const ultimateGuitar = extractUltimateGuitarTab(doc);
+  if (ultimateGuitar && countTabLines(ultimateGuitar.tabText) >= 6) {
+    return ultimateGuitar;
+  }
+
+  // Generic pages: the tightest element containing the most tab lines.
+  const candidates = [];
+  const selectors = ['pre', 'code', '.js-tab-content', '[class*="tab"]', 'article', 'main'];
   selectors.forEach((selector) => {
     doc.querySelectorAll(selector).forEach((node) => {
       const text = node.textContent || '';
       if (!text.trim()) return;
-      const tabLineCount = (text.match(/^[ \t]*[eEADGBeB][ \t]*\|/gm) || []).length;
-      const score = tabLineCount * 100 + Math.min(text.length, 5000) / 100;
-      candidates.push({ text, score });
+      candidates.push({ text, tabLines: countTabLines(text) });
     });
   });
 
-  const bodyText = doc.body?.innerText || doc.body?.textContent || '';
+  const bodyText = doc.body?.textContent || '';
   if (bodyText.trim()) {
-    const tabLineCount = (bodyText.match(/^[ \t]*[eEADGBeB][ \t]*\|/gm) || []).length;
-    candidates.push({ text: bodyText, score: tabLineCount * 100 });
+    candidates.push({ text: bodyText, tabLines: countTabLines(bodyText) });
   }
 
-  candidates.sort((a, b) => b.score - a.score);
-  const best = candidates[0]?.text;
-  if (!best || !tabLinePattern.test(best)) {
+  candidates.sort((a, b) => b.tabLines - a.tabLines || a.text.length - b.text.length);
+  const best = candidates[0];
+  if (!best || best.tabLines < 6) {
     throw new Error('Could not find tab lines in that page');
   }
 
   return {
-    tabText: best,
+    tabText: stripTabMarkup(best.text),
     tuning: extractTuningMetadata(rawText, doc),
     bpm: extractBpmMetadata(rawText, doc),
+    capo: 0,
   };
 }
 
-function classifyTabStringLabel(label) {
-  const trimmed = label.trim();
-  if (trimmed === 'e') return 'e';
-  const upper = trimmed.toUpperCase();
-  if (upper === 'E') return 'E';
-  if (upper === 'B') return 'B';
-  if (upper === 'G') return 'G';
-  if (upper === 'D') return 'D';
-  if (upper === 'A') return 'A';
-  return null;
+const TAB_BODY_CHAR = /[-0-9|hpbrstx/\\~()<>^.*=+vPHBRSTX]/;
+
+// Recognizes one ASCII-tab string line and returns its optional label ("e", "B", "D#",
+// "Eb", lowercase too) and the body after the label/separator. Accepts labelled
+// ("e|--0--", "D#|--", "e --0--") and unlabelled ("|--0--|", "--0--") lines, and drops a
+// trailing annotation such as "| x2". Returns null for anything that isn't a tab line.
+function parseTabLine(rawLine) {
+  const line = String(rawLine).replace(/\r/g, '').replace(/\t/g, '    ');
+  const match = line.match(/^\s*([A-Ga-g][#b]?)?\s*([|:])?(.*)$/);
+  if (!match) return null;
+  const [, label = null, separator = null] = match;
+  let body = match[3];
+
+  if (!separator && !/^\s*-/.test(body)) return null;
+  body = body.trim().split(/\s{2,}|\s+(?=[A-Za-z(])/)[0];
+  if (body.length < 4) return null;
+
+  const dashCount = (body.match(/-/g) || []).length;
+  if (dashCount < 3) return null;
+  let tabChars = 0;
+  for (const char of body) {
+    if (TAB_BODY_CHAR.test(char)) tabChars += 1;
+  }
+  if (tabChars / body.length < 0.85) return null;
+
+  return { label, body: body.replace(/\s/g, '-') };
 }
 
+// Groups consecutive tab lines into 6-line systems by POSITION (top line = high e), so
+// duplicate "E" labels, drop-D "D" labels, lowercase and unlabelled lines all work.
+// Blocks that aren't a multiple of 6 lines (bass, 7-string, fragments) are skipped.
+// Returns { systems: [{ strings: [s1..s6 bodies], labels: [s1..s6] }], labelTuning }.
 function parseTabSystems(tabText) {
-  const lines = tabText.split('\n').map((line) => line.replace(/\r/g, ''));
-  const requiredKeys = ['e', 'B', 'G', 'D', 'A', 'E'];
-  const systems = [];
-  let current = {};
-
+  const lines = stripTabMarkup(tabText).split('\n');
+  const blocks = [];
+  let block = [];
   for (const rawLine of lines) {
-    const match = rawLine.match(/^\s*([eEADGBeB])\s*\|(.+)$/);
-    if (!match) {
-      if (Object.keys(current).length > 0) {
-        current = {};
-      }
-      continue;
+    const parsed = parseTabLine(rawLine);
+    if (parsed) {
+      block.push(parsed);
+    } else if (block.length) {
+      blocks.push(block);
+      block = [];
     }
+  }
+  if (block.length) blocks.push(block);
 
-    const key = classifyTabStringLabel(match[1]);
-    if (!key) continue;
-
-    const content = match[2]
-      .replace(/\|/g, '-')
-      .replace(/\s/g, '-')
-      .trim();
-    current[key] = content;
-
-    if (requiredKeys.every((requiredKey) => typeof current[requiredKey] === 'string')) {
-      systems.push(current);
-      current = {};
+  const systems = [];
+  for (const lineBlock of blocks) {
+    if (lineBlock.length % 6 !== 0) continue;
+    for (let i = 0; i < lineBlock.length; i += 6) {
+      let group = lineBlock.slice(i, i + 6);
+      // Rare low-E-on-top layout: "E" first and "e" last.
+      if (group[0].label === 'E' && group[5].label === 'e') {
+        group = [...group].reverse();
+      }
+      systems.push({
+        strings: group.map((entry) => entry.body),
+        labels: group.map((entry) => entry.label),
+      });
     }
   }
 
   if (systems.length === 0) {
     throw new Error('No complete 6-string tab systems found');
   }
-  return systems;
+
+  return { systems, labelTuning: tuningFromStringLabels(systems[0].labels) };
+}
+
+// Open-string pitches implied by a full set of string labels (high e first), e.g. a
+// drop-D tab labelled e B G D A D. Null unless all six labels are present.
+function tuningFromStringLabels(labels) {
+  if (!Array.isArray(labels) || labels.length !== 6 || labels.some((label) => !label)) {
+    return null;
+  }
+  const tokens = labels.map((label) => parseTuningToken(label));
+  if (tokens.some((token) => !token)) return null;
+  const parsed = buildOpenMidiMapFromTokens(tokens, 'high-to-low');
+  return parsed ? parsed.openMidiByString : null;
 }
 
 function parseTabTextToPiece(
   tabText,
   msPerColumn,
   pieceName,
-  openMidiByString = DEFAULT_OPEN_MIDI_BY_STRING,
+  openMidiByString = null,
   bpm = null,
   options = {},
 ) {
-  const { simplifyToSingleNotes = true } = options;
-  const systems = parseTabSystems(tabText);
-  const stringOrder = [
-    { key: 'e', string: 1 },
-    { key: 'B', string: 2 },
-    { key: 'G', string: 3 },
-    { key: 'D', string: 4 },
-    { key: 'A', string: 5 },
-    { key: 'E', string: 6 },
-  ];
+  const { simplifyToSingleNotes = true, capo = 0 } = options;
+  const { systems, labelTuning } = parseTabSystems(tabText);
+  const tuning = openMidiByString || labelTuning || DEFAULT_OPEN_MIDI_BY_STRING;
 
   const rawEvents = [];
   let globalColumnOffset = 0;
 
   for (const system of systems) {
-    const maxLen = Math.max(...stringOrder.map((entry) => system[entry.key]?.length || 0));
+    const maxLen = Math.max(...system.strings.map((body) => body.length));
 
-    stringOrder.forEach((entry) => {
-      const raw = system[entry.key] || '';
+    system.strings.forEach((raw, stringIndex) => {
+      const stringNumber = stringIndex + 1;
       for (let col = 0; col < raw.length; col += 1) {
         const char = raw[col];
         const prevChar = col > 0 ? raw[col - 1] : '';
@@ -1522,7 +1620,7 @@ function parseTabTextToPiece(
 
         rawEvents.push({
           column: globalColumnOffset + col,
-          string: entry.string,
+          string: stringNumber,
           fret,
         });
         col = end - 1;
@@ -1575,10 +1673,10 @@ function parseTabTextToPiece(
             : baseDuration
         )
         : baseDuration;
-      const openMidi = Number.isFinite(openMidiByString[event.string])
-        ? openMidiByString[event.string]
+      const openMidi = Number.isFinite(tuning[event.string])
+        ? tuning[event.string]
         : DEFAULT_OPEN_MIDI_BY_STRING[event.string];
-      const midi = openMidi + event.fret;
+      const midi = openMidi + capo + event.fret;
 
       notes.push({
         note: midiToNoteName(midi),
@@ -1619,11 +1717,14 @@ async function fetchTabPage(url) {
   };
   const jinaAttempt = {
     label: 'jina-mirror',
-    target: `https://r.jina.ai/http://${cleanUrl.replace(/^https?:\/\//i, '')}`,
+    target: `https://r.jina.ai/${cleanUrl.replace(/^http:\/\//i, 'https://')}`,
   };
 
+  // Third-party CORS proxies: the URL (not any user data) is sent to them. Ultimate Guitar
+  // sends no CORS headers, so skip the direct attempt there and prefer the raw HTML
+  // (allorigins) because it carries the .js-store JSON with the tab.
   const proxyAttempts = isUltimateGuitar
-    ? [jinaAttempt, directAttempt, allOriginsAttempt]
+    ? [allOriginsAttempt, jinaAttempt]
     : [directAttempt, allOriginsAttempt, jinaAttempt];
 
   let lastError = null;
@@ -1677,7 +1778,7 @@ async function importTabFromUrl() {
   try {
     const { htmlOrText, via } = await fetchTabPage(parsedUrl.toString());
     setTaskProgress(dom.importProgress, 35);
-    const { tabText, tuning, bpm } = extractTabImportData(htmlOrText);
+    const { tabText, tuning, bpm, capo } = extractTabImportData(htmlOrText);
     setTaskProgress(dom.importProgress, 55);
     const pieceName = guessPieceNameFromUrl(parsedUrl.toString());
     const typedMsPerColumn = Number(dom.msPerColumnInput.value || DEFAULT_TAB_MS_PER_COLUMN);
@@ -1692,9 +1793,9 @@ async function importTabFromUrl() {
       tabText,
       effectiveMsPerColumn,
       pieceName,
-      tuning?.openMidiByString || DEFAULT_OPEN_MIDI_BY_STRING,
+      tuning?.openMidiByString || null,
       bpm?.bpm || null,
-      { simplifyToSingleNotes: state.simplifyTabs },
+      { simplifyToSingleNotes: state.simplifyTabs, capo },
     );
     setTaskProgress(dom.importProgress, 75);
     const normalized = normalizePiece(parsedPiece);
@@ -1705,7 +1806,8 @@ async function importTabFromUrl() {
     setTaskProgress(dom.importProgress, 100);
 
     const detailBits = [];
-    if (tuning) detailBits.push(`Tuning: ${tuning.label} (${tuning.source})`);
+    if (tuning) detailBits.push(`Tuning: ${tuning.label} (${tuning.source || 'tab text'})`);
+    if (capo) detailBits.push(`Capo ${capo}`);
     if (bpm) detailBits.push(`BPM: ${bpm.bpm} (${bpm.source})`);
     if (bpm && usingDefaultMsPerColumn) {
       detailBits.push(`ms/col auto: ${effectiveMsPerColumn}`);
@@ -1718,7 +1820,7 @@ async function importTabFromUrl() {
   } catch (error) {
     setTaskProgress(dom.importProgress, 100);
     setImportStatus(
-      `Import failed: ${error.message}. If blocked by CORS, paste raw tabs into the JSON editor.`,
+      `Import failed: ${error.message}. If the site or proxies block it, copy the tab text and paste it into the Custom Piece box below.`,
       true,
     );
   } finally {
@@ -3597,12 +3699,18 @@ function loadCustomPiece() {
   }
 
   try {
-    const pieceLike = parseCustomPieceInput(raw);
+    const msPerColumn = Number(dom.msPerColumnInput.value || DEFAULT_TAB_MS_PER_COLUMN);
+    const pieceLike = parseCustomPieceInput(raw, {
+      msPerColumn: Number.isFinite(msPerColumn) ? msPerColumn : DEFAULT_TAB_MS_PER_COLUMN,
+      simplifyToSingleNotes: state.simplifyTabs,
+    });
     const normalized = normalizePiece(pieceLike);
 
     state.activePiece = normalized;
     syncBpmSliderWithPiece(normalized);
-    dom.customLoadStatus.textContent = `Custom piece loaded (${normalized.notes.length} notes)`;
+    dom.customLoadStatus.textContent = pieceLike.importedFrom === 'ascii-tab'
+      ? `Converted pasted tab to ${normalized.notes.length} notes (editor now shows the JSON)`
+      : `Custom piece loaded (${normalized.notes.length} notes)`;
     syncPieceEditor(normalized);
     dom.songSelect.selectedIndex = -1;
     restartPiece();
@@ -3797,6 +3905,7 @@ export {
   extractTabImportData,
   parseTabSystems,
   parseTabTextToPiece,
+  parseTabLine,
   detectPitch,
   detectMonophonicNotesFromAudio,
 };
