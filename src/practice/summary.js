@@ -1,6 +1,6 @@
 // End-of-run summary: accuracy, timing tendency, the trickiest notes and bar, and a
 // suggested next step. Pure, so it is unit-tested.
-import { timingScoreForMs } from '../scoring.js';
+import { timingScoreForMs } from './session.js';
 
 export const STAR_THRESHOLDS = [0.5, 0.75, 0.9];
 export const BEATS_PER_BAR = 4;
