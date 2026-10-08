@@ -10,7 +10,6 @@ const MIC_LEVEL_MAX_RMS = 0.06;
 const MAX_CENTS_FOR_PERFECT = 12;
 const MAX_CENTS_FOR_GOOD = 28;
 const HIT_CENTS_THRESHOLD = 35;
-const HIT_TIMING_THRESHOLD_MS = 180;
 const MIN_HIT_STREAK = 2;
 const STEP_MIN_HIT_HOLD_MS = 220;
 const TIMED_MIN_HIT_HOLD_MS = 140;
@@ -22,7 +21,18 @@ const START_HOTKEY = 'Space';
 const TUNER_VERY_CLOSE_CENTS = 5;
 const OCTAVE_FOLD_TOLERANCE_CENTS = 100;
 const DEFAULT_TAB_MS_PER_COLUMN = 120;
-const TIMED_HIT_WINDOW_MS = 140;
+// A timed note counts only if a fresh onset (pluck or pitch change) lands within this
+// distance of note.start; narrower for fast passages (half the gap to the neighbours).
+const TIMED_ONSET_WINDOW_MS = 200;
+const TIMED_MIN_ONSET_WINDOW_MS = 60;
+const ONSET_RISE_RATIO = 1.6;
+const ONSET_MIN_RMS = MIN_SIGNAL_RMS * 2;
+const ONSET_REFRACTORY_MS = 120;
+const ONSET_HISTORY_FRAMES = 6;
+const ONSET_PITCH_CHANGE_SEMITONES = 0.7;
+const ONSET_PITCH_STABLE_FRAMES = 2;
+const ONSET_PITCH_MERGE_MS = 250;
+const MAX_TRACKED_ONSETS = 24;
 const DEFAULT_COLUMNS_PER_BEAT = 4;
 const TAB_NOTE_SUSTAIN_RATIO = 0.98;
 const TAB_SYSTEM_GAP_COLUMNS = 0;
@@ -229,6 +239,12 @@ let state = {
   isStarting: false,
   rafId: null,
   pieceClock: createPieceClock(),
+  onsetDetector: createOnsetDetector(),
+  onsets: [],
+  onsetSeq: 0,
+  stepArmedOnsetSeq: 0,
+  lastOnsetAtMs: -Infinity,
+  lastTimingMs: null,
   listenMode: 'practice',
   practiceMode: 'timed',
   stepIndex: 0,
@@ -449,6 +465,7 @@ function normalizePiece(piece) {
   notes.forEach((note, index) => {
     note.index = index;
   });
+  assignOnsetWindows(notes);
 
   return {
     name: piece.name || 'Custom Piece',
@@ -458,6 +475,31 @@ function normalizePiece(piece) {
     totalDuration: notes.reduce((max, note) => Math.max(max, note.end), 0),
     playableCount: notes.filter((note) => !isStepNoteEmptyOrUnmapped(note)).length,
   };
+}
+
+// Timed-mode onset tolerance per note (seconds): half the gap to the neighbouring note
+// starts (chord tones share a start), clamped to [TIMED_MIN_ONSET_WINDOW_MS, TIMED_ONSET_WINDOW_MS].
+function assignOnsetWindows(notes) {
+  const groupStarts = [];
+  notes.forEach((note) => {
+    if (!groupStarts.length || note.start - groupStarts.at(-1) > CHORD_GROUP_EPSILON_SECONDS) {
+      groupStarts.push(note.start);
+    }
+  });
+
+  let groupIndex = 0;
+  notes.forEach((note) => {
+    while (groupIndex + 1 < groupStarts.length && groupStarts[groupIndex + 1] <= note.start + 1e-9) {
+      groupIndex += 1;
+    }
+    const prevGap = groupIndex > 0 ? note.start - groupStarts[groupIndex - 1] : Infinity;
+    const nextGap = groupIndex + 1 < groupStarts.length ? groupStarts[groupIndex + 1] - note.start : Infinity;
+    const halfGap = Math.min(prevGap, nextGap) / 2;
+    note.onsetWindow = Math.min(
+      TIMED_ONSET_WINDOW_MS / 1000,
+      Math.max(TIMED_MIN_ONSET_WINDOW_MS / 1000, halfGap),
+    );
+  });
 }
 
 function createVirtualNote(noteName) {
@@ -1725,8 +1767,15 @@ function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs = 130) {
     frames.push({
       time: offset / sampleRate,
       pitch: pitch ? frequencyToFractionalMidi(pitch.frequency) : null,
+      rms: computeRms(frame),
     });
   }
+
+  // Energy onsets let a re-plucked note of the same pitch become a separate note.
+  const onsetDetector = createOnsetDetector();
+  const onsetFrames = frames.map((frame) => (
+    onsetDetector.update({ rms: frame.rms, pitchMidi: null, nowMs: frame.time * 1000 }) !== null
+  ));
 
   // Median-of-3 removes single-frame glitches at note boundaries. (The old mean of rounded
   // MIDI values averaged two different notes into a third one, e.g. B3/G3 -> G#3.)
@@ -1740,12 +1789,14 @@ function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs = 130) {
 
   const rawEvents = [];
   let current = null;
+  let lastOnsetFrame = -Infinity;
   const closeCurrent = (endTime) => {
     rawEvents.push({
       midi: Math.round(medianOf(current.pitches)),
       start: current.start,
       end: endTime,
       frames: current.pitches.length,
+      onset: current.onset,
     });
     current = null;
   };
@@ -1753,6 +1804,7 @@ function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs = 130) {
   for (let index = 0; index < smoothed.length; index += 1) {
     const pitch = smoothed[index];
     const frameTime = frames[index].time;
+    if (onsetFrames[index]) lastOnsetFrame = index;
 
     if (pitch === null) {
       if (current) {
@@ -1766,7 +1818,9 @@ function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs = 130) {
 
     if (current) {
       const reference = medianOf(current.pitches.slice(-5));
-      if (Math.abs(pitch - reference) < AUDIO_TAB_SAME_NOTE_SEMITONES) {
+      const samePitch = Math.abs(pitch - reference) < AUDIO_TAB_SAME_NOTE_SEMITONES;
+      const replucked = onsetFrames[index] && current.pitches.length >= 2;
+      if (samePitch && !replucked) {
         current.pitches.push(pitch);
         current.silenceFrames = 0;
         continue;
@@ -1778,6 +1832,7 @@ function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs = 130) {
       pitches: [pitch],
       start: frameTime,
       silenceFrames: 0,
+      onset: index - lastOnsetFrame <= 2,
     };
   }
 
@@ -1791,13 +1846,15 @@ function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs = 130) {
       midi: event.midi,
       start: Number(event.start.toFixed(3)),
       duration: Number(Math.max(0.1, event.end - event.start).toFixed(3)),
+      onset: event.onset,
     }))
     .filter((event) => event.duration * 1000 >= Math.max(80, minNoteMs));
 
   const merged = [];
   for (const event of filtered) {
     const last = merged[merged.length - 1];
-    if (last && event.midi === last.midi && event.start <= last.start + last.duration + 0.07) {
+    // Re-join a note split by a brief dropout, but never across a fresh pluck.
+    if (last && !event.onset && event.midi === last.midi && event.start <= last.start + last.duration + 0.07) {
       last.duration = Number((event.start + event.duration - last.start).toFixed(3));
       continue;
     }
@@ -2048,6 +2105,89 @@ function detectPitch(buf, sampleRate) {
   return { frequency, confidence: clarity };
 }
 
+// Frame-by-frame note-onset detector. A new note starts when either
+//  - the level jumps by ONSET_RISE_RATIO over the quietest recent frame (a pluck, including
+//    re-plucking a string that is still ringing), or
+//  - a new pitch becomes stable (legato hammer-on/slide, or a soft note after silence)
+//    and no energy onset fired in the previous ONSET_PITCH_MERGE_MS.
+// update() returns the onset time in ms for the frame that starts a note, otherwise null.
+function createOnsetDetector(options = {}) {
+  const {
+    riseRatio = ONSET_RISE_RATIO,
+    minRms = ONSET_MIN_RMS,
+    refractoryMs = ONSET_REFRACTORY_MS,
+    historyFrames = ONSET_HISTORY_FRAMES,
+    pitchChangeSemitones = ONSET_PITCH_CHANGE_SEMITONES,
+    stableFrames = ONSET_PITCH_STABLE_FRAMES,
+    pitchMergeMs = ONSET_PITCH_MERGE_MS,
+  } = options;
+
+  let rmsHistory = [];
+  let lastOnsetMs = -Infinity;
+  let stablePitch = null;
+  let candidate = null;
+  let unpitchedFrames = 0;
+
+  return {
+    reset() {
+      rmsHistory = [];
+      lastOnsetMs = -Infinity;
+      stablePitch = null;
+      candidate = null;
+      unpitchedFrames = 0;
+    },
+    update({ rms, pitchMidi = null, nowMs }) {
+      let onsetMs = null;
+      if (nowMs - lastOnsetMs < refractoryMs) {
+        // Still inside the attack: track only the latest level so the baseline after the
+        // refractory period is the sustained level, not the pre-attack silence.
+        rmsHistory = [rms];
+      } else {
+        const baseline = rmsHistory.length ? Math.min(...rmsHistory) : null;
+        if (
+          baseline !== null
+          && rms >= minRms
+          && rms >= Math.max(baseline, minRms / 2) * riseRatio
+        ) {
+          onsetMs = nowMs;
+          lastOnsetMs = nowMs;
+        }
+        rmsHistory.push(rms);
+        if (rmsHistory.length > historyFrames) rmsHistory.shift();
+      }
+
+      if (!Number.isFinite(pitchMidi)) {
+        unpitchedFrames += 1;
+        candidate = null;
+        if (unpitchedFrames >= 3) stablePitch = null;
+        return onsetMs;
+      }
+
+      unpitchedFrames = 0;
+      if (stablePitch !== null && Math.abs(pitchMidi - stablePitch) < pitchChangeSemitones) {
+        candidate = null;
+        return onsetMs;
+      }
+
+      if (candidate && Math.abs(pitchMidi - candidate.pitch) < pitchChangeSemitones) {
+        candidate.frames += 1;
+      } else {
+        candidate = { pitch: pitchMidi, frames: 1, startMs: nowMs };
+      }
+
+      if (candidate.frames >= stableFrames) {
+        stablePitch = candidate.pitch;
+        if (onsetMs === null && candidate.startMs - lastOnsetMs >= pitchMergeMs) {
+          onsetMs = candidate.startMs;
+          lastOnsetMs = candidate.startMs;
+        }
+        candidate = null;
+      }
+      return onsetMs;
+    },
+  };
+}
+
 function peakDbNearFrequency(frequencyData, sampleRate, fftSize, frequency, radius = 1) {
   if (!frequencyData || !Number.isFinite(frequency) || frequency <= 0) {
     return -120;
@@ -2160,6 +2300,8 @@ async function startAudio(listenMode = 'practice') {
     state.frequencyHistory = [];
     state.lastDetectedFrequency = null;
     state.lastDetectedAtMs = 0;
+    state.onsetDetector.reset();
+    resetOnsets();
     const startedAtMs = performance.now();
     resetPieceClock(startedAtMs);
     state.lastTickAtMs = startedAtMs;
@@ -2248,6 +2390,7 @@ function restartPiece() {
   state.lastDetectedFrequency = null;
   state.lastDetectedAtMs = 0;
   state.stepIndex = 0;
+  resetOnsets();
   skipEmptyStepNotes();
   const restartedAtMs = performance.now();
   resetPieceClock(restartedAtMs);
@@ -2272,6 +2415,11 @@ function renderMicStatus(rms, detectedFrequency) {
 
   if (rms < MIN_SIGNAL_RMS) {
     dom.micStatus.textContent = 'No signal';
+    return;
+  }
+
+  if (performance.now() - state.lastOnsetAtMs < 150) {
+    dom.micStatus.textContent = 'Note start';
     return;
   }
 
@@ -2302,22 +2450,66 @@ function renderDetected(frequency) {
   dom.detectedFreq.textContent = `${frequency.toFixed(1)} Hz`;
 }
 
-function getTimedHitWindow(targetNote) {
-  const center = targetNote.start + targetNote.duration / 2;
-  const halfWindowSeconds = Math.min(
-    TIMED_HIT_WINDOW_MS / 1000,
-    Math.max(0.06, targetNote.duration * 0.45),
-  );
-  return {
-    start: center - halfWindowSeconds,
-    end: center + halfWindowSeconds,
-  };
+function latencyOffsetSeconds() {
+  return state.practiceMode === 'timed' ? Number(dom.latencyOffset.value) / 1000 : 0;
 }
 
-function isWithinTimedHitWindow(targetNote, shiftedElapsedSeconds) {
-  if (!targetNote || state.practiceMode !== 'timed') return false;
-  const hitWindow = getTimedHitWindow(targetNote);
-  return shiftedElapsedSeconds >= hitWindow.start && shiftedElapsedSeconds <= hitWindow.end;
+function registerOnset(atMs) {
+  state.onsetSeq += 1;
+  state.lastOnsetAtMs = atMs;
+  state.onsets.push({
+    id: state.onsetSeq,
+    // Same time base as the timed-mode target lookup (piece time + latency offset).
+    pieceSeconds: state.pieceClock.secondsAt(atMs) + latencyOffsetSeconds(),
+    consumedStart: null,
+  });
+  if (state.onsets.length > MAX_TRACKED_ONSETS) {
+    state.onsets.shift();
+  }
+}
+
+// Forget onsets heard before a (re)start; in step mode the first note needs a new pluck.
+function resetOnsets() {
+  state.onsets = [];
+  state.stepArmedOnsetSeq = state.onsetSeq;
+  state.lastTimingMs = null;
+}
+
+// Nearest onset to note.start within the note's window that no other note start has used.
+// Notes sharing a start (a chord) may share one onset (one strum).
+function findOnsetForNote(note) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const onset of state.onsets) {
+    if (
+      onset.consumedStart !== null
+      && Math.abs(onset.consumedStart - note.start) > CHORD_GROUP_EPSILON_SECONDS
+    ) {
+      continue;
+    }
+    const distance = Math.abs(onset.pieceSeconds - note.start);
+    if (distance <= note.onsetWindow && distance < bestDistance) {
+      best = onset;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function advanceStepTo(index) {
+  state.stepIndex = index;
+  // Onsets heard so far belong to earlier steps; the next step needs a fresh one.
+  state.stepArmedOnsetSeq = state.onsetSeq;
+}
+
+function hasFreshStepOnset() {
+  return state.onsetSeq > state.stepArmedOnsetSeq;
+}
+
+function formatTimingOffset(timingMs) {
+  if (!Number.isFinite(timingMs)) return '';
+  if (Math.abs(timingMs) < 15) return 'on time';
+  return `${Math.round(Math.abs(timingMs))} ms ${timingMs < 0 ? 'early' : 'late'}`;
 }
 
 function renderTarget(target, shiftedElapsedSeconds) {
@@ -2353,8 +2545,7 @@ function renderTarget(target, shiftedElapsedSeconds) {
   }
 
   dom.targetNote.textContent = target.note;
-  const hitWindow = getTimedHitWindow(target);
-  dom.targetWindow.textContent = `Hit window ${hitWindow.start.toFixed(2)}s - ${hitWindow.end.toFixed(2)}s`;
+  dom.targetWindow.textContent = `Pluck at ${target.start.toFixed(2)}s (±${Math.round(target.onsetWindow * 1000)} ms)`;
 }
 
 function renderCloseness(centsAbs, centsSigned, isTargetActive) {
@@ -3133,7 +3324,7 @@ function scoreFrame({
   if (isChordStepMode() && !remainingStepGroup.length && stepGroup.length) {
     const { endIndex } = stepGroupBoundsForNote(targetNote);
     if (endIndex >= state.stepIndex) {
-      state.stepIndex = endIndex + 1;
+      advanceStepTo(endIndex + 1);
     }
     renderPieceProgress();
     renderScores(state.practiceMode);
@@ -3155,15 +3346,6 @@ function scoreFrame({
       state.stats.noteHitHoldMs.set(candidate.index, 0);
     }
   };
-
-  if (state.practiceMode === 'timed' && !isWithinTimedHitWindow(targetNote, shiftedElapsedSeconds)) {
-    dom.closeness.textContent = 'Wait';
-    dom.centsOff.textContent = 'Outside hit window';
-    resetHitCandidates(activeCandidates);
-    renderPieceProgress();
-    renderScores(state.practiceMode);
-    return;
-  }
 
   const canUseChordSpectrum = (
     isChordStepMode()
@@ -3207,17 +3389,32 @@ function scoreFrame({
   state.stats.pitchSamples += 1;
   state.stats.pitchTotal += pitchScore;
 
-  let isHitNow = hasFullChordMatch;
+  const isTimed = state.practiceMode === 'timed';
+  if (isTimed && state.stats.notesHit.has(targetNote.index)) {
+    // Already counted; keep pitch feedback while it rings but don't score it twice.
+    renderCloseness(centsAbs, cents, true);
+    dom.centsOff.textContent = `Hit · ${formatTimingOffset(state.lastTimingMs)}`;
+    renderPieceProgress();
+    renderScores(state.practiceMode);
+    return;
+  }
+
+  // A hit needs the right pitch AND a fresh note start: in timed mode an onset near
+  // note.start, in step mode any onset since this step became current. This stops a
+  // ringing note from also counting for the next identical note.
+  const timedOnset = isTimed ? findOnsetForNote(targetNote) : null;
+  const hasRequiredOnset = isTimed ? Boolean(timedOnset) : hasFreshStepOnset();
+  const pitchMatches = hasFullChordMatch || centsAbs < HIT_CENTS_THRESHOLD;
+  const isHitNow = pitchMatches && hasRequiredOnset;
   let holdHint = '';
-  if (!isHitNow && state.practiceMode === 'timed') {
-    const noteCenter = targetNote.start + targetNote.duration / 2;
-    const timingMs = (shiftedElapsedSeconds - noteCenter) * 1000;
-    const timingScore = timingScoreForMs(Math.abs(timingMs));
-    state.stats.timingSamples += 1;
-    state.stats.timingTotal += timingScore;
-    isHitNow = centsAbs < HIT_CENTS_THRESHOLD && Math.abs(timingMs) < HIT_TIMING_THRESHOLD_MS;
-  } else if (!isHitNow) {
-    isHitNow = centsAbs < HIT_CENTS_THRESHOLD;
+  if (pitchMatches && !hasRequiredOnset) {
+    if (!isTimed) {
+      holdHint = 'Right note - pluck it again to confirm this step';
+    } else if (shiftedElapsedSeconds - targetNote.start > targetNote.onsetWindow) {
+      holdHint = `Right note, but not plucked within ±${Math.round(targetNote.onsetWindow * 1000)} ms of its start`;
+    } else {
+      holdHint = 'Right note - pluck it on the beat';
+    }
   }
 
   const requiredHoldMs = state.practiceMode === 'timed' ? TIMED_MIN_HIT_HOLD_MS : STEP_MIN_HIT_HOLD_MS;
@@ -3229,6 +3426,14 @@ function scoreFrame({
     state.stats.noteHitHoldMs.set(noteIndex, holdMs);
 
     if (streak >= MIN_HIT_STREAK && holdMs >= requiredHoldMs) {
+      if (isTimed && timedOnset) {
+        const timingMs = (timedOnset.pieceSeconds - targetNote.start) * 1000;
+        state.stats.timingSamples += 1;
+        state.stats.timingTotal += timingScoreForMs(Math.abs(timingMs));
+        timedOnset.consumedStart = targetNote.start;
+        state.lastTimingMs = timingMs;
+        holdHint = `Hit · ${formatTimingOffset(timingMs)}`;
+      }
       if (hasFullChordMatch && isChordStepMode()) {
         for (const candidate of activeCandidates) {
           state.stats.notesHit.add(candidate.index);
@@ -3248,11 +3453,11 @@ function scoreFrame({
           if (!remaining.length) {
             const { endIndex } = stepGroupBoundsForNote(targetNote);
             if (endIndex >= state.stepIndex) {
-              state.stepIndex = endIndex + 1;
+              advanceStepTo(endIndex + 1);
             }
           }
         } else if (noteIndex === state.stepIndex) {
-          state.stepIndex += 1;
+          advanceStepTo(state.stepIndex + 1);
         }
       }
     } else {
@@ -3302,6 +3507,14 @@ function tick() {
   const rms = computeRms(state.data);
   const pitch = detectPitch(state.data, state.audioCtx.sampleRate);
   const liveFrequency = pitch?.frequency || null;
+  const onsetMs = state.onsetDetector.update({
+    rms,
+    pitchMidi: liveFrequency ? frequencyToFractionalMidi(liveFrequency) : null,
+    nowMs,
+  });
+  if (onsetMs !== null) {
+    registerOnset(onsetMs);
+  }
   const heldFrequency = withPitchHold(liveFrequency);
   const detectedFrequency = smoothFrequency(heldFrequency);
   skipEmptyStepNotes();
@@ -3421,7 +3634,7 @@ function updateModeUi() {
         ? 'Step mode ignores timing. Complete every note in the current shape to advance.'
         : 'Step mode ignores timing. Play the correct note to move to the next step.'
     )
-    : `Timed mode: hit each note inside a narrow +/-${TIMED_HIT_WINDOW_MS}ms window around the note center.`;
+    : `Timed mode: pluck each note within ±${TIMED_ONSET_WINDOW_MS} ms of its start (tighter in fast passages). Timing accuracy = how close your note starts were.`;
   updateGuideToneHint();
   updateTabsPanelCopy();
 }
@@ -3576,6 +3789,7 @@ export {
   centsDifference,
   tunerCentsFromTarget,
   createPieceClock,
+  createOnsetDetector,
   normalizePiece,
   parseCustomPieceInput,
   parseBpmFromText,
