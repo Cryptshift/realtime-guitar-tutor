@@ -97,6 +97,7 @@ export function normalizePiece(piece, instrument = getInstrument()) {
     name: piece.name || 'Custom Piece',
     instrument: instrument.id,
     bpm: piece.bpm || 100,
+    ...(Number(piece.beatsPerBar) > 0 ? { beatsPerBar: Number(piece.beatsPerBar) } : {}),
     notes,
     // The last-starting note is not necessarily the last to end.
     totalDuration: notes.reduce((max, note) => Math.max(max, note.end), 0),
@@ -152,6 +153,7 @@ export function toPieceSnapshot(normalizedPiece, instrument = getInstrument()) {
     name: normalizedPiece.name,
     instrument: normalizedPiece.instrument || instrument.id,
     bpm: normalizedPiece.bpm,
+    ...(normalizedPiece.beatsPerBar ? { beatsPerBar: normalizedPiece.beatsPerBar } : {}),
     notes: normalizedPiece.notes.map((note) => ({
       note: note.note,
       start: note.start,

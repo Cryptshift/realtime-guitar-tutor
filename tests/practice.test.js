@@ -1,0 +1,94 @@
+import { describe, expect, it } from 'vitest';
+import { getInstrument } from '../src/instruments/index.js';
+import { normalizePiece } from '../src/piece.js';
+import { computeSummary, sectionsFor, starsFor } from '../src/practice/summary.js';
+import { BUILT_IN_SONGS } from '../src/songs/catalog.js';
+import { DEFAULT_SETTINGS, createStore } from '../src/storage.js';
+
+const fourBars = () => normalizePiece({
+  bpm: 60,
+  notes: Array.from({ length: 16 }, (_, i) => ({ note: ['C4', 'D4', 'E4', 'F4'][i % 4], start: i, duration: 1 })),
+}, getInstrument('piano'));
+
+describe('run summary', () => {
+  it('scores accuracy, stars, timing tendency and the trickiest bar', () => {
+    const piece = fourBars();
+    const results = piece.notes.map((note) => ({ hit: true, timingMs: 40, wrongAttempts: 0 }));
+    results[9] = { hit: false, wrongAttempts: 2 };
+    results[10] = { hit: false, wrongAttempts: 0, missed: true };
+    const summary = computeSummary({ piece, results, mode: 'play', tempoPercent: 70 });
+    expect(summary.accuracy).toBeCloseTo(14 / 16, 6);
+    expect(summary.stars).toBe(2);
+    expect(summary.tendency).toBe('You tend to play 40 ms late');
+    expect(summary.trickyBar).toMatchObject({ bar: 3, loop: { start: 8, end: 12 }, tempoPercent: 50 });
+    expect(summary.trickyNotes[0]).toMatchObject({ label: 'D4', count: 3 });
+    expect(summary.suggestion.loop).toEqual({ start: 8, end: 12 });
+  });
+
+  it('suggests a faster tempo after a great run, and wait mode after a poor play-along', () => {
+    const piece = fourBars();
+    const allHit = piece.notes.map(() => ({ hit: true, timingMs: 0 }));
+    expect(computeSummary({ piece, results: allHit, mode: 'wait', tempoPercent: 70 }).suggestion).toMatchObject({ tempoPercent: 80 });
+    const poor = piece.notes.map((_, i) => ({ hit: i < 4 }));
+    expect(computeSummary({ piece, results: poor, mode: 'play', tempoPercent: 70 }).suggestion).toMatchObject({ mode: 'wait' });
+    expect(starsFor(0.49)).toBe(0);
+    expect(starsFor(0.9)).toBe(3);
+  });
+
+  it('splits a piece into sections of bars', () => {
+    expect(sectionsFor(fourBars(), 2).map((s) => s.label)).toEqual(['Bars 1–2', 'Bars 3–4']);
+  });
+});
+
+describe('local storage', () => {
+  const memoryStorage = () => {
+    const data = new Map();
+    return { getItem: (k) => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, String(v)) };
+  };
+
+  it('falls back to defaults when storage is missing or broken', () => {
+    expect(createStore(undefined).loadSettings()).toEqual({ ...DEFAULT_SETTINGS });
+    const broken = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('quota'); } };
+    const store = createStore(broken);
+    expect(store.loadSettings().theme).toBe('dark');
+    expect(store.saveSettings({ theme: 'light' })).toBe(false);
+  });
+
+  it('keeps settings, user songs, best scores and history', () => {
+    const store = createStore(memoryStorage());
+    store.saveSettings({ ...store.loadSettings(), instrument: 'piano', onboarded: true });
+    expect(store.loadSettings()).toMatchObject({ instrument: 'piano', onboarded: true, theme: 'dark' });
+
+    store.saveUserSong({ id: 'a', title: 'A' });
+    store.saveUserSong({ id: 'b', title: 'B' });
+    store.saveUserSong({ id: 'a', title: 'A2' });
+    expect(store.loadUserSongs().map((s) => s.title)).toEqual(['A2', 'B']);
+
+    expect(store.recordRun('a', { accuracy: 0.6, tempoPercent: 70 }).isNewBest).toBe(true);
+    expect(store.recordRun('a', { accuracy: 0.5, tempoPercent: 70 }).isNewBest).toBe(false);
+    expect(store.recordRun('a', { accuracy: 0.6, tempoPercent: 80 }).isNewBest).toBe(true);
+    const progress = store.loadProgress();
+    expect(progress.songs.a.plays).toBe(3);
+    expect(progress.songs.a.history).toHaveLength(3);
+    store.setLastPlayed({ songId: 'a', mode: 'wait' });
+    expect(store.loadProgress().lastPlayed).toMatchObject({ songId: 'a', mode: 'wait' });
+  });
+});
+
+describe('built-in songs', () => {
+  it('are all fully playable on their instrument', () => {
+    for (const song of BUILT_IN_SONGS) {
+      const piece = normalizePiece(song.piece, getInstrument(song.instrument));
+      expect(piece.playableCount, song.id).toBe(piece.notes.length);
+    }
+  });
+
+  it('include the five piano starter pieces with fingering where given', () => {
+    const piano = BUILT_IN_SONGS.filter((s) => s.instrument === 'piano').map((s) => s.title);
+    expect(piano).toEqual([
+      'Twinkle Twinkle Little Star', 'Mary Had a Little Lamb', 'Ode to Joy', 'Für Elise (opening)', 'Minuet in G (opening)',
+    ]);
+    const ode = BUILT_IN_SONGS.find((s) => s.id === 'piano-ode').piece.notes;
+    expect(ode.slice(0, 4).map((n) => n.finger)).toEqual([3, 3, 4, 5]);
+  });
+});
