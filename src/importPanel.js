@@ -1,5 +1,4 @@
 // Import UI: URL import, audio-to-tab generation, custom piece loading.
-import { detectMonophonicNotesFromAudio, downmixAudioBufferToMono, estimateBpmFromDetectedNotes } from './audioToTab.js';
 import {
   resetTaskProgress,
   restartPiece,
@@ -90,39 +89,99 @@ export async function importTabFromUrl() {
   }
 }
 
+// The running audio-to-tab job, so it can be cancelled.
+let audioTabJob = null;
+
+function runAudioToTabWorker(payload, transfer, onProgress) {
+  const worker = new Worker(new URL('./audio/audioToTab.worker.js', import.meta.url), { type: 'module' });
+  let rejectJob;
+  const promise = new Promise((resolve, reject) => {
+    rejectJob = reject;
+    worker.onmessage = (event) => {
+      const message = event.data;
+      if (message.type === 'progress') {
+        onProgress(message.fraction);
+      } else if (message.type === 'done') {
+        worker.terminate();
+        resolve(message);
+      } else if (message.type === 'error') {
+        worker.terminate();
+        reject(new Error(message.message));
+      }
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || 'Audio analysis worker failed'));
+    };
+  });
+  worker.postMessage(payload, transfer);
+  return {
+    promise,
+    cancel() {
+      worker.terminate();
+      const error = new Error('Cancelled');
+      error.name = 'AbortError';
+      rejectJob(error);
+    },
+  };
+}
+
 export async function generatePieceFromAudio(file, minNoteMs, onProgress = () => {}) {
   const DecodeContext = window.AudioContext || window.webkitAudioContext;
   if (!DecodeContext) {
     throw new Error('Browser audio decoding is not supported');
   }
   const decodeContext = new DecodeContext();
+  let audioBuffer;
   try {
-    onProgress(22);
+    onProgress(10);
     const arrayBuffer = await file.arrayBuffer();
-    const audioBuffer = await decodeContext.decodeAudioData(arrayBuffer.slice(0));
-    onProgress(48);
-    const mono = downmixAudioBufferToMono(audioBuffer);
-    const detectedNotes = detectMonophonicNotesFromAudio(mono, audioBuffer.sampleRate, minNoteMs, {
-      range: state.instrument.detector,
-      frameSize: state.instrument.detector?.frameSize,
-    });
-    onProgress(72);
-    if (!detectedNotes.length) {
-      throw new Error('No stable guitar notes detected');
-    }
-
-    const baseName = file.name.replace(/\.[a-z0-9]+$/i, '').trim() || 'Audio Import';
-    const bpmGuess = estimateBpmFromDetectedNotes(detectedNotes);
-    onProgress(90);
-    return {
-      name: `${baseName} (Audio Tabs)`,
-      bpm: bpmGuess || 100,
-      notes: detectedNotes,
-    };
+    audioBuffer = await decodeContext.decodeAudioData(arrayBuffer.slice(0));
   } finally {
     if (decodeContext.state !== 'closed') {
       await decodeContext.close();
     }
+  }
+  onProgress(20);
+  if (audioTabJob === null) {
+    // Cancelled while decoding.
+    const error = new Error('Cancelled');
+    error.name = 'AbortError';
+    throw error;
+  }
+
+  // Copy the channels out of the AudioBuffer so they can be transferred to the worker.
+  const channels = Array.from({ length: audioBuffer.numberOfChannels }, (_, i) => audioBuffer.getChannelData(i).slice());
+  const job = runAudioToTabWorker(
+    {
+      channels,
+      sampleRate: audioBuffer.sampleRate,
+      minNoteMs,
+      range: { minHz: state.instrument.detector?.minHz, maxHz: state.instrument.detector?.maxHz },
+      frameSize: state.instrument.detector?.frameSize,
+    },
+    channels.map((channel) => channel.buffer),
+    (fraction) => onProgress(20 + fraction * 75),
+  );
+  audioTabJob = job;
+  const { notes: detectedNotes, bpm: bpmGuess } = await job.promise;
+  if (!detectedNotes.length) {
+    throw new Error('No stable notes detected');
+  }
+
+  const baseName = file.name.replace(/\.[a-z0-9]+$/i, '').trim() || 'Audio Import';
+  return {
+    name: `${baseName} (Audio Tabs)`,
+    bpm: bpmGuess || 100,
+    notes: detectedNotes,
+  };
+}
+
+export function cancelAudioTabGeneration() {
+  const job = audioTabJob;
+  audioTabJob = null;
+  if (job && typeof job.cancel === 'function') {
+    job.cancel();
   }
 }
 
@@ -141,26 +200,35 @@ export async function generateTabsFromAudio() {
   }
 
   dom.generateAudioTabBtn.disabled = true;
-  setAudioTabStatus('Analyzing audio and generating tabs...');
-  setTaskProgress(dom.audioTabProgress, 8);
+  dom.cancelAudioTabBtn.hidden = false;
+  audioTabJob = { pending: true };
+  setAudioTabStatus('Analyzing audio and generating tabs... (the page stays usable; Cancel stops it)');
+  setTaskProgress(dom.audioTabProgress, 5);
 
   try {
     const piece = await generatePieceFromAudio(file, minNoteMs, (progress) => {
       setTaskProgress(dom.audioTabProgress, progress);
     });
     const normalized = normalizePiece(piece, state.instrument);
-    setTaskProgress(dom.audioTabProgress, 96);
+    setTaskProgress(dom.audioTabProgress, 97);
     setActivePieceAsImported(normalized);
     setTaskProgress(dom.audioTabProgress, 100);
     dom.customLoadStatus.textContent = `Audio tabs generated (${normalized.notes.length} notes)`;
     setAudioTabStatus(
-      `Generated ${normalized.notes.length} notes. BPM guess: ${piece.bpm || 'n/a'}. Best with clean single-note guitar.`,
+      `Generated ${normalized.notes.length} notes. BPM guess: ${piece.bpm || 'n/a'}. Best with a clean single-note recording.`,
     );
   } catch (error) {
-    setTaskProgress(dom.audioTabProgress, 100);
-    setAudioTabStatus(`Audio tab generation failed: ${error.message}`, true);
+    if (error?.name === 'AbortError') {
+      resetTaskProgress(dom.audioTabProgress);
+      setAudioTabStatus('Audio tab generation cancelled.');
+    } else {
+      setTaskProgress(dom.audioTabProgress, 100);
+      setAudioTabStatus(`Audio tab generation failed: ${error.message}`, true);
+    }
   } finally {
+    audioTabJob = null;
     dom.generateAudioTabBtn.disabled = false;
+    dom.cancelAudioTabBtn.hidden = true;
   }
 }
 

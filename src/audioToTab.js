@@ -4,13 +4,12 @@ import { FFT_SIZE, computeRms, detectPitch } from './dsp/pitch.js';
 import { frequencyToFractionalMidi, midiToNoteName } from './music.js';
 import { medianOf } from './util.js';
 
-export function downmixAudioBufferToMono(audioBuffer) {
-  const { length, numberOfChannels } = audioBuffer;
+export function downmixChannels(channels) {
+  const length = channels[0]?.length || 0;
   const mono = new Float32Array(length);
-  for (let channel = 0; channel < numberOfChannels; channel += 1) {
-    const channelData = audioBuffer.getChannelData(channel);
+  for (const channelData of channels) {
     for (let i = 0; i < length; i += 1) {
-      mono[i] += channelData[i] / numberOfChannels;
+      mono[i] += channelData[i] / channels.length;
     }
   }
   return mono;
@@ -20,7 +19,12 @@ export function downmixAudioBufferToMono(audioBuffer) {
 // new note. Below 1 so chromatic neighbours split; above 0.5 so mild vibrato doesn't.
 export const AUDIO_TAB_SAME_NOTE_SEMITONES = 0.6;
 
-export function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs = 130, { range, frameSize: preferredFrameSize = FFT_SIZE } = {}) {
+export function detectMonophonicNotesFromAudio(
+  monoData,
+  sampleRate,
+  minNoteMs = 130,
+  { range, frameSize: preferredFrameSize = FFT_SIZE, onProgress = null } = {},
+) {
   if (!monoData?.length) return [];
 
   const frameSize = Math.min(preferredFrameSize, monoData.length);
@@ -29,7 +33,11 @@ export function detectMonophonicNotesFromAudio(monoData, sampleRate, minNoteMs =
   const minFrames = Math.max(2, Math.round((Math.max(80, minNoteMs) / 1000) / frameSeconds));
   const frames = [];
 
+  const lastOffset = monoData.length - frameSize;
   for (let offset = 0; offset + frameSize <= monoData.length; offset += hopSize) {
+    if (onProgress && frames.length % 200 === 0) {
+      onProgress(lastOffset > 0 ? offset / lastOffset : 1);
+    }
     const frame = monoData.subarray(offset, offset + frameSize);
     const pitch = detectPitch(frame, sampleRate, range);
     frames.push({

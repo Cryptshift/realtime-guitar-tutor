@@ -25,6 +25,7 @@ import {
   updateModeUi,
 } from './controls.js';
 import {
+  cancelAudioTabGeneration,
   generateTabsFromAudio,
   importTabFromUrl,
   loadCustomPiece,
@@ -132,6 +133,7 @@ export function bindEvents() {
   dom.loadCustomBtn.addEventListener('click', loadCustomPiece);
   dom.importTabBtn.addEventListener('click', importTabFromUrl);
   dom.generateAudioTabBtn.addEventListener('click', generateTabsFromAudio);
+  dom.cancelAudioTabBtn.addEventListener('click', cancelAudioTabGeneration);
 
   dom.tabUrlInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {

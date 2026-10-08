@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectMonophonicNotesFromAudio } from '../src/audioToTab.js';
+import { detectMonophonicNotesFromAudio, downmixChannels } from '../src/audioToTab.js';
 import { detectPitch } from '../src/dsp/pitch.js';
 import { centsDifference, midiToFrequency, noteNameToMidi } from '../src/music.js';
 import { pluckedSequence, tone, whiteNoise } from './helpers/synth.js';
@@ -65,5 +65,23 @@ describe('detectMonophonicNotesFromAudio', () => {
     notes.forEach((note, index) => {
       expect(Math.abs(note.start - index)).toBeLessThan(0.1);
     });
+  });
+});
+
+describe('audio-to-tab helpers', () => {
+  it('downmixes channels to mono', () => {
+    const mono = downmixChannels([Float32Array.from([1, 0, -1]), Float32Array.from([0, 0, 1])]);
+    expect(Array.from(mono)).toEqual([0.5, 0, 0]);
+  });
+
+  it('reports progress from 0 to 1 while analysing', () => {
+    const sampleRate = 44100;
+    const audio = pluckedSequence({ frequencies: [110, 220, 330, 440, 550, 660, 770, 880], sampleRate });
+    const fractions = [];
+    detectMonophonicNotesFromAudio(audio, sampleRate, 130, { onProgress: (f) => fractions.push(f) });
+    expect(fractions.length).toBeGreaterThan(1);
+    expect(fractions[0]).toBe(0);
+    expect(fractions.every((f, i) => i === 0 || f >= fractions[i - 1])).toBe(true);
+    expect(fractions.at(-1)).toBeLessThanOrEqual(1);
   });
 });

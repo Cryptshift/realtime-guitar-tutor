@@ -83,6 +83,7 @@ export const queryDom = () => ({
   audioTabInput: document.querySelector('#audioTabInput'),
   audioTabMinMs: document.querySelector('#audioTabMinMs'),
   generateAudioTabBtn: document.querySelector('#generateAudioTabBtn'),
+  cancelAudioTabBtn: document.querySelector('#cancelAudioTabBtn'),
   audioTabStatus: document.querySelector('#audioTabStatus'),
   audioTabProgress: document.querySelector('#audioTabProgress'),
   micLevel: document.querySelector('#micLevel'),
