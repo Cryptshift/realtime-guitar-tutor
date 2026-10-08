@@ -2,6 +2,8 @@
 
 A browser app that listens to your guitar through the microphone and tells you, note by note, whether you're playing the right pitch at the right time. It shows beginner-friendly tabs, has a standalone tuner, and can turn tab pages, pasted ASCII tab, or a guitar recording into a playable exercise.
 
+**Live demo:** https://cryptshift.github.io/realtime-guitar-tutor/
+
 Everything runs locally in the browser (Vite + vanilla JS, no backend). The one exception is **URL import**, which goes through third-party CORS proxies (see [Importing tabs](#importing-tabs)).
 
 ## Quick start
@@ -87,40 +89,103 @@ Nothing else is sent anywhere. If the proxies fail, copy the tab text and paste 
 Upload a clean, **monophonic** guitar recording to get a single-note exercise with an estimated BPM.
 
 - Re-plucked repeated notes are kept as separate notes.
-- Analysis runs on the main thread, so the page pauses briefly while it works (roughly 0.3 s per 10 s of audio on a laptop).
+- Analysis runs in a Web Worker, so the page stays responsive. A progress bar tracks it and **Cancel audio analysis** stops it. A 3-minute song takes a few seconds.
 
 ## How it works
 
-- **Pitch detection**: McLeod Pitch Method, a normalized square difference function over 2048-sample frames. It covers 60–1400 Hz, chooses the first key maximum within 90% of the highest, and refines it with parabolic interpolation. On synthetic E2–E6 tones it is within 0.2 cents with no octave errors, and it stays silent on white noise.
-- **Note onsets**: a frame-level detector fires on a level jump over the recent minimum (a pluck or re-pluck) or on a newly stable pitch (legato or a soft start). Onsets drive the timing score and the fresh-pluck rule.
+### Audio pipeline
+
+```
+mic -> MediaStreamSource -> capture AudioWorklet --frames--> detector Web Worker --results--> main thread
+                         \-> AnalyserNode (spectrum, chord mode only)
+```
+
+- **`src/audio/capture.worklet.js`** (audio thread). Copies the input into a ring buffer and, every 256 samples (~5 ms), posts the latest 2048-sample frame with its AudioContext time. It does no DSP. Frame buffers are recycled, so it never allocates on the audio thread.
+- **`src/audio/detector.worker.js`** (worker). Runs pitch and onset detection for each frame and posts a small result: level, frequency, clarity and onset time. The worklet and the worker talk over a `MessageChannel`, so audio frames never reach the page.
+- **Main thread** (`src/loop.js`):
+  - Scores each result as it arrives, using audio-clock timestamps.
+  - Renders once per animation frame.
+  - Only writes DOM text and values that changed.
+  - While listening it uses about 6 ms of main-thread time per second, down from about 100 ms when detection ran there.
+- **Pitch detection** (`src/dsp/pitch.js`): McLeod Pitch Method, a normalized square difference function. It searches the instrument's frequency range (guitar: 60–1400 Hz), takes the first key maximum within 90% of the highest, and refines it with parabolic interpolation. On synthetic E2–E6 tones it is within 0.2 cents with no octave errors, and it stays silent on white noise.
+- **Note onsets** (`src/dsp/onset.js`): a detector fires on a level jump over the recent minimum (a pluck or re-pluck) or on a newly stable pitch (legato or a soft start). Onsets drive the timing score and the fresh-pluck rule.
 - **Microphone**: opened with echo cancellation, noise suppression and auto-gain **off**. Those speech filters damp sustained notes.
+- **Audio-to-tab** (`src/audio/audioToTab.worker.js`): the same detectors run offline over a decoded file in a worker.
+
+### Modules
+
+```
+src/main.js                 entry: DOM events, init
+src/state.js                shared state + DOM element registry
+src/loop.js                 analysis-result handling and render loop
+src/audioEngine.js          mic start/stop (worklet + worker), guide tone, backing track
+src/audio/                  capture worklet, detector worker, audio-to-tab worker
+src/dsp/                    pitch (MPM), onset, chord spectrum
+src/scoring.js              targets, onsets, hit/step logic, feedback
+src/clock.js                tempo-aware piece clock
+src/piece.js                piece model, normalization, custom JSON/text input
+src/music.js                note names, MIDI, cents, pitch classes
+src/render/                 status, tab slots, timeline, instrument panel
+src/controls.js             control-panel actions (modes, BPM, tuner selects, restart)
+src/importPanel.js          URL import, audio-to-tab, custom piece loading
+src/import/                 page fetching via CORS proxies, BPM metadata
+src/instruments/index.js    instrument registry and interface
+src/instruments/guitar/     strings/frets, tunings, tab parser, page import, tab text, fretboard view
+```
+
+**Instruments.** Generic code reaches anything guitar-specific only through the interface in `src/instruments/index.js`, which covers:
+
+- range and detector hints;
+- note placement and playability;
+- slot and timeline text;
+- the instrument view;
+- tuner sets;
+- text and page importers.
+
+A new instrument is a folder under `src/instruments/` plus one registry entry.
+
+## Testing
+
+```bash
+npm test             # Vitest: 62 unit tests
+```
+
+The unit tests cover:
+
+- note/MIDI helpers and the tuner's octave folding;
+- the tempo clock;
+- the pitch detector, against synthetic tones and noise;
+- the onset detector, the audio-to-tab transcription and its progress reporting;
+- the ASCII tab parser and the Ultimate Guitar extractor;
+- BPM and custom-piece parsing;
+- the instrument registry, including a stand-in keyboard instrument.
+
+End-to-end checks run in a real browser with a synthetic microphone. Start `npm run dev`, open the app, then in the devtools console:
+
+```js
+await (await import('/tests/browser/fakeMicSuite.js')).runFakeMicSuite();
+await (await import('/tests/browser/measure.js')).measureLatency();
+await (await import('/tests/browser/audioToTabCheck.js')).checkAudioToTab({ seconds: 180 });
+```
+
+Together they cover:
+
+- timed and step scoring;
+- the tuner and the BPM slider;
+- the start guard and failure cleanup;
+- latency and main-thread cost;
+- audio-to-tab responsiveness and cancel.
+
+## Deployment
+
+`.github/workflows/deploy.yml` builds and publishes `dist/` to GitHub Pages on every push to `main`: `npm ci`, `npm test`, `npm run build`, then upload and deploy. `vite.config.js` uses a relative `base`, so the build works under a project sub-path.
 
 ## Tips and limitations
 
 - Use a quiet room and a clean tone. Heavy reverb, distortion or other instruments confuse single-pitch detection.
 - Chord detection (post-beginner step mode) is a heuristic spectral check and can be lenient on low strings.
 - Imported and custom pieces live only for the session; reloading the page clears them.
-- Detection and audio-to-tab run on the main thread.
-
-## Project layout
-
-```
-index.html        UI markup
-src/main.js       App logic (audio, detection, scoring, import, rendering)
-src/styles.css    Styles
-tests/            Vitest unit tests + synthetic signal helpers
-```
-
-The unit tests (`npm test`) cover:
-
-- note/MIDI helpers;
-- the tuner's octave folding;
-- the tempo clock;
-- the pitch detector, against synthetic tones and noise;
-- the onset detector;
-- the ASCII tab parser and the Ultimate Guitar extractor;
-- BPM parsing;
-- custom-piece parsing.
+- Needs a browser with AudioWorklet and module Web Workers (current Chrome, Edge, Firefox and Safari).
 
 ## License
 
