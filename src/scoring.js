@@ -257,6 +257,7 @@ export function scoreFrame({
   frameDeltaMs,
   targetNote,
   shiftedElapsedSeconds,
+  heldMidis = null,
 }) {
   if (!targetNote) {
     setFeedback(Number.NaN, 0, false);
@@ -299,7 +300,10 @@ export function scoreFrame({
   const chordSpectrum = canUseChordSpectrum
     ? detectChordMatchesFromSpectrum(activeCandidates, frequencyData, sampleRate, fftSize)
     : { matched: [], scored: [] };
-  const hasFullChordMatch = canUseChordSpectrum && chordSpectrum.matched.length >= activeCandidates.length;
+  // A MIDI keyboard reports exactly which keys are down, so chords need no spectrum guess.
+  const hasFullChordMatch = heldMidis && isChordStepMode() && activeCandidates.length > 1
+    ? activeCandidates.every((candidate) => heldMidis.has(candidate.midi))
+    : canUseChordSpectrum && chordSpectrum.matched.length >= activeCandidates.length;
 
   if ((!hasLivePitch || !detectedFrequency) && !hasFullChordMatch) {
     setFeedback(Number.NaN, 0, true);

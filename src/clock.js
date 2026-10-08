@@ -20,5 +20,17 @@ export function createPieceClock(nowMs = 0, scale = 1) {
       anchorMs = atMs;
       currentScale = nextScale;
     },
+    // Jump to a piece position (loops, pause/resume, count-in before 0).
+    seek(atMs, seconds) {
+      anchorMs = atMs;
+      anchorSeconds = seconds;
+    },
+    // Wall-clock time at which the piece reaches `seconds` (for scheduling clicks).
+    msAt(seconds) {
+      return anchorMs + ((seconds - anchorSeconds) / currentScale) * 1000;
+    },
+    get scale() {
+      return currentScale;
+    },
   };
 }
