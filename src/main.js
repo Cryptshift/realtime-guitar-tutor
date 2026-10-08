@@ -223,6 +223,7 @@ let state = {
   data: null,
   frequencyData: null,
   isRunning: false,
+  isStarting: false,
   rafId: null,
   startTimestamp: 0,
   listenMode: 'practice',
@@ -761,7 +762,7 @@ function updateGuideToneHint() {
     dom.guideToneHint.textContent = 'On (Timed mode only)';
     return;
   }
-  dom.guideToneHint.textContent = 'On';
+  dom.guideToneHint.textContent = 'On (use headphones so the mic does not hear it)';
 }
 
 function setGuideToneEnabled(enabled) {
@@ -2032,27 +2033,43 @@ function detectChordMatchesFromSpectrum(candidates, frequencyData, sampleRate, f
   return { matched, scored };
 }
 
+function setListenButtonsDisabled(disabled) {
+  dom.startBtn.disabled = disabled;
+  dom.tunerStartBtn.disabled = disabled;
+}
+
 async function startAudio(listenMode = 'practice') {
-  if (state.isRunning) return;
+  // Guard before any await so a double click can't open two mic streams/contexts.
+  if (state.isRunning || state.isStarting) return;
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     dom.customLoadStatus.textContent = 'Your browser does not support microphone input.';
     return;
   }
 
+  state.isStarting = true;
+  setListenButtonsDisabled(true);
+  dom.micStatus.textContent = 'Requesting microphone...';
+
+  let stream = null;
+  let audioCtx = null;
   try {
-    state.mediaStream = await navigator.mediaDevices.getUserMedia({
+    // Speech processing (echo cancellation, noise suppression, auto gain) treats sustained
+    // instrument tones as noise and pumps the level, so ask for the raw signal.
+    stream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        echoCancellation: true,
-        autoGainControl: true,
-        noiseSuppression: true,
+        echoCancellation: false,
+        autoGainControl: false,
+        noiseSuppression: false,
         channelCount: 1,
       },
       video: false,
     });
 
-    state.audioCtx = new AudioContext();
-    await state.audioCtx.resume();
+    audioCtx = new AudioContext();
+    await audioCtx.resume();
+    state.mediaStream = stream;
+    state.audioCtx = audioCtx;
     state.analyser = state.audioCtx.createAnalyser();
     state.analyser.fftSize = FFT_SIZE;
     state.analyser.smoothingTimeConstant = 0.8;
@@ -2087,8 +2104,25 @@ async function startAudio(listenMode = 'practice') {
 
     tick();
   } catch (error) {
+    // Release anything acquired before the failure so the mic indicator turns off.
+    stream?.getTracks().forEach((track) => track.stop());
+    if (audioCtx && audioCtx.state !== 'closed') {
+      audioCtx.close().catch(() => {});
+    }
+    stopGuideToneNodes();
+    state.mediaStream = null;
+    state.audioCtx = null;
+    state.analyser = null;
+    state.source = null;
+    state.data = null;
+    state.frequencyData = null;
+    state.isRunning = false;
+    setListenButtonsDisabled(false);
+    dom.micStatus.textContent = 'Mic error';
     dom.customLoadStatus.textContent = `Mic error: ${error.message}`;
     dom.tunerStatus.textContent = `Mic error: ${error.message}`;
+  } finally {
+    state.isStarting = false;
   }
 }
 
