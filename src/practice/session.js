@@ -19,7 +19,7 @@ export const PLAY_HOLD_MS = 140;
 export const WRONG_NOTE_STABLE_MS = 70;
 const PITCH_DROPOUT_MS = 90;
 const MAX_ONSETS = 32;
-const PRAISE = ['Nice!', 'Great!', 'Yes!', 'Good one!'];
+const PRAISE = ['Correct', 'Good', 'That’s it'];
 
 export function timingScoreForMs(msAbs) {
   if (msAbs >= 260) return 0;
@@ -171,7 +171,7 @@ export function createPracticeSession({
     s.streak += 1;
     s.bestStreak = Math.max(s.bestStreak, s.streak);
     s.lastHit = { index: note.index, timingMs, atMs: nowMs };
-    const praise = s.streak >= 10 ? 'On fire!' : s.streak >= 5 ? 'On a roll!' : PRAISE[s.hitCount % PRAISE.length];
+    const praise = PRAISE[s.hitCount % PRAISE.length];
     setFeedback(nowMs, 'hit', praise, 'check', s.mode === 'play' ? formatTimingOffset(timingMs) : '');
     emit({ type: 'hit', index: note.index, timingMs, atMs: nowMs });
   }

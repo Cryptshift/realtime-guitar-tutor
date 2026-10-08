@@ -11,7 +11,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   micDeviceId: null,
   midiDeviceId: null,
   latencyMs: 0,
-  theme: 'dark',
+  theme: 'system',
   leftHanded: false,
   showKeyLabels: true,
   guideTone: false,

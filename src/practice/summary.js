@@ -89,11 +89,11 @@ export function computeSummary({ piece, results, mode, tempoPercent = 100, descr
   let suggestion;
   if (accuracy >= 0.9 && tempoPercent < 120) {
     const next = clampTempo(tempoPercent + 10);
-    suggestion = { text: `Great playing! Try it at ${next}% tempo.`, tempoPercent: next };
+    suggestion = { text: `You are ready for more speed. Try it at ${next}% tempo.`, tempoPercent: next };
   } else if (accuracy >= 0.9 && mode === 'wait') {
     suggestion = { text: 'You have it at full speed. Try "Play along" next.', mode: 'play' };
   } else if (accuracy >= 0.9) {
-    suggestion = { text: 'Full speed, nearly perfect. Pick a new song!' };
+    suggestion = { text: 'Full speed and nearly perfect. Try a new song.' };
   } else if (accuracy < 0.6 && mode === 'play') {
     suggestion = { text: 'Switch to "Wait for me" and learn the notes first.', mode: 'wait' };
   } else if (trickyBar) {

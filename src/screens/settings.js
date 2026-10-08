@@ -83,7 +83,11 @@ export const settingsScreen = {
       h('div', { class: 'dialog-body' }, createCalibration({ onResult: () => latency.refresh() })));
     calibrationDialog.addEventListener('close', () => latency.refresh());
 
-    const theme = radioGroup('Theme', 'theme', [{ value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }]);
+    const theme = radioGroup('Theme', 'theme', [
+      { value: 'system', label: 'Match my device' },
+      { value: 'light', label: 'Paper (light)' },
+      { value: 'dark', label: 'Stage (dark)' },
+    ]);
 
     const sections = [
       h('fieldset', {}, h('legend', {}, 'Instrument'),

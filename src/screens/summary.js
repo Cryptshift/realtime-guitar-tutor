@@ -18,7 +18,7 @@ export const summaryScreen = {
     const stars = h('span', { class: 'stars', role: 'img', 'aria-label': `${summary.stars} of 3 stars` });
     for (let i = 0; i < 3; i += 1) stars.append(iconEl(i < summary.stars ? 'star' : 'starOutline', i < summary.stars ? '' : 'is-empty'));
 
-    const headline = summary.accuracy >= 0.9 ? 'Brilliant!' : summary.accuracy >= 0.75 ? 'Nice work!' : summary.accuracy >= 0.5 ? 'Getting there' : 'Keep practising';
+    const headline = summary.accuracy >= 0.9 ? 'Excellent' : summary.accuracy >= 0.75 ? 'Good run' : summary.accuracy >= 0.5 ? 'Getting there' : 'Keep practising';
     const hero = h('div', { class: 'score-hero' },
       h('p', { class: 'muted' }, song.title, run.loop ? ' · loop' : ''),
       h('h1', {}, headline),
@@ -39,8 +39,8 @@ export const summaryScreen = {
       ? h('section', { class: 'card', 'aria-labelledby': 'trickyTitle' },
         h('h2', { id: 'trickyTitle' }, 'Trickiest notes'),
         h('ul', { class: 'tricky-list' }, ...summary.trickyNotes.map((item) => h('li', { class: 'badge' },
-          iconEl('cross'), `${item.label} · ${item.count} ${item.count === 1 ? 'slip' : 'slips'}`))))
-      : h('section', { class: 'card' }, h('p', {}, iconEl('check'), ' No slips at all. Lovely.'));
+          iconEl('cross'), `${item.label} · ${item.count} ${item.count === 1 ? 'mistake' : 'mistakes'}`))))
+      : h('section', { class: 'card' }, h('p', {}, iconEl('check'), ' No mistakes.'));
 
     const actions = h('div', { class: 'summary-actions' });
     if (summary.trickyBar) {

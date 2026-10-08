@@ -50,9 +50,9 @@ export function renderKeyboard(container, { current, upcoming, pieceRange, showL
   whites.forEach((midi, i) => {
     const x = i * whiteWidth;
     const isCurrent = currentByMidi.has(midi);
-    parts.push(`<rect class="pk-white${isCurrent ? ' pk-current' : ''}" x="${x}" y="0" width="${whiteWidth}" height="${WHITE_HEIGHT}" rx="6"/>`);
+    parts.push(`<rect class="pk-white${isCurrent ? ' pk-current' : ''}" x="${x}" y="0" width="${whiteWidth}" height="${WHITE_HEIGHT}" rx="4"/>`);
     if (nextMidis.has(midi) && !isCurrent) {
-      parts.push(`<rect class="pk-next" x="${x + 5}" y="${WHITE_HEIGHT - 70}" width="${whiteWidth - 10}" height="62" rx="6"/>`);
+      parts.push(`<rect class="pk-next" x="${x + 5}" y="${WHITE_HEIGHT - 70}" width="${whiteWidth - 10}" height="62" rx="4"/>`);
     }
     const name = label(midi);
     const isC = midi % 12 === 0;

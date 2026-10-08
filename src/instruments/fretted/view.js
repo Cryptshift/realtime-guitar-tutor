@@ -54,6 +54,10 @@ export function renderFretboard(container, { layout, current, upcoming, leftHand
   const midY = top + (gap * (stringCount - 1)) / 2;
 
   const parts = [];
+  // The rosewood board, from the nut (or the first visible fret) to the right edge.
+  const boardX0 = Math.min(mx(wireX(start)), mx(boardRight));
+  const boardX1 = Math.max(mx(wireX(start)), mx(boardRight));
+  parts.push(`<rect class="fb-board" x="${boardX0}" y="${top - 16}" width="${boardX1 - boardX0}" height="${gap * (stringCount - 1) + 32}" rx="3"/>`);
   // Inlays.
   for (let fret = Math.max(1, start + 1); fret <= end; fret += 1) {
     const x = mx(dotX(fret));
@@ -76,7 +80,8 @@ export function renderFretboard(container, { layout, current, upcoming, leftHand
   layout.strings.forEach((info) => {
     const y = stringY(info.string);
     const weight = 1.5 + (info.openMidi < 50 ? 2 : info.openMidi < 60 ? 1 : 0);
-    parts.push(`<line class="fb-string" x1="${mx(boardLeft - 40)}" y1="${y}" x2="${mx(boardRight)}" y2="${y}" stroke-width="${weight}"/>`);
+    const material = info.wound ? 'fb-string-wound' : 'fb-string-plain';
+    parts.push(`<line class="${material}" x1="${mx(boardLeft - 40)}" y1="${y}" x2="${mx(boardRight)}" y2="${y}" stroke-width="${weight}"/>`);
     parts.push(`<text class="fb-stringname" x="${mx(28)}" y="${y + 7}">${escapeText(info.label)}</text>`);
   });
   // Upcoming (dashed) then current (filled) markers.
@@ -85,7 +90,7 @@ export function renderFretboard(container, { layout, current, upcoming, leftHand
     if (currentKeys.has(`${note.tab.string}:${note.tab.fret}`)) return;
     const x = mx(dotX(note.tab.fret));
     const y = stringY(note.tab.string);
-    parts.push(`<circle class="fb-next" cx="${x}" cy="${y}" r="20"/>`);
+    parts.push(`<circle class="fb-next${note.tab.fret === 0 ? ' fb-next-off' : ''}" cx="${x}" cy="${y}" r="20"/>`);
   });
   currentNotes.forEach((note) => {
     const x = mx(dotX(note.tab.fret));

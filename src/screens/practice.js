@@ -491,12 +491,13 @@ export const practiceScreen = {
       let detail = '';
       if (view.status === 'finished') {
         tone = 'hit';
-        text = 'Finished!';
+        text = 'Finished';
         iconName = 'check';
       } else if (fresh) {
         ({ tone } = fb);
         ({ text } = fb);
-        iconName = fb.icon;
+        // Every tone has a shape: check (correct), tilde (close), cross or arrow (off).
+        iconName = fb.icon || (tone === 'close' ? 'tilde' : tone === 'off' ? 'cross' : null);
         detail = fb.detail || '';
       } else if (view.status === 'ready' && mode === 'wait') {
         text = 'Play the first note to begin';
@@ -531,7 +532,7 @@ export const practiceScreen = {
       let hint = '';
       if (view.status === 'ready') hint = mode === 'wait' ? 'Play the first note to begin' : 'Press Space or Start to count in';
       else if (view.status === 'paused') hint = 'Paused · press Space to continue';
-      else if (view.status === 'finished') hint = 'Done! Press Esc to see your results';
+      else if (view.status === 'finished') hint = 'Finished. Your results are next';
       startHint.hidden = !hint;
       setText(startHint, hint);
 
@@ -568,8 +569,8 @@ export const practiceScreen = {
       }
 
       if (view.streak >= 3) {
-        if (!streak.firstChild) streak.append(iconEl('flame'), h('span', {}, ''));
-        setText(streak.lastChild, `Streak ${view.streak}`);
+        if (!streak.firstChild) streak.append(h('span', {}, ''));
+        setText(streak.lastChild, `${view.streak} in a row`);
       } else if (streak.firstChild) {
         streak.replaceChildren();
       }

@@ -29,10 +29,9 @@ export function createHighway(canvas, { piece, instrument }) {
       onAccent: cssVar('--on-accent'),
       hit: cssVar('--hit'),
       miss: cssVar('--miss'),
-      upcoming: cssVar('--upcoming'),
-      upcomingSoft: cssVar('--upcoming-soft'),
+      onHit: cssVar('--on-hit'),
       close: cssVar('--close'),
-      font: cssVar('--font') || 'system-ui',
+      font: cssVar('--font-mono') || 'ui-monospace, monospace',
     };
   }
 
@@ -108,7 +107,7 @@ export function createHighway(canvas, { piece, instrument }) {
       ctx.fillRect(0, 0, width, height);
 
       // Lanes and labels.
-      ctx.font = `700 ${Math.min(20, Math.max(13, laneHeight * 0.42))}px ${colors.font}`;
+      ctx.font = `600 ${Math.min(20, Math.max(13, laneHeight * 0.42))}px ${colors.font}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       layout.lanes.forEach((lane, i) => {
@@ -165,14 +164,12 @@ export function createHighway(canvas, { piece, instrument }) {
         const h = laneHeight - pad * 2;
         const result = view.results[note.index] || {};
         const isCurrent = currentIndexes.has(note.index) && !result.hit;
-        roundRect(Math.max(labelWidth, x0), y, x1 - Math.max(labelWidth, x0), h, 8);
+        roundRect(Math.max(labelWidth, x0), y, x1 - Math.max(labelWidth, x0), h, 4);
         let labelColor = colors.text;
         if (result.hit) {
           ctx.fillStyle = colors.hit;
-          ctx.globalAlpha = 0.85;
           ctx.fill();
-          ctx.globalAlpha = 1;
-          labelColor = colors.onAccent;
+          labelColor = colors.onHit;
         } else if (result.missed) {
           ctx.strokeStyle = colors.miss;
           ctx.lineWidth = 3;
@@ -188,21 +185,22 @@ export function createHighway(canvas, { piece, instrument }) {
           ctx.stroke();
           labelColor = colors.onAccent;
         } else {
-          ctx.fillStyle = colors.upcomingSoft;
+          // Upcoming: ink (or cream) outline on the paper.
+          ctx.fillStyle = colors.lane;
           ctx.fill();
-          ctx.strokeStyle = colors.upcoming;
+          ctx.strokeStyle = colors.text;
           ctx.lineWidth = 2;
           ctx.stroke();
         }
         const labelX = Math.max(labelWidth + fontSize, x0 + fontSize * 0.9);
         if (labelX < x1) {
           ctx.fillStyle = labelColor;
-          ctx.font = `800 ${fontSize}px ${colors.font}`;
+          ctx.font = `600 ${fontSize}px ${colors.font}`;
           ctx.fillText(layout.labelOf(note), labelX, y + h / 2 + 1);
         }
         const markX = Math.min(x1 - fontSize * 0.7, labelX + fontSize * 1.3);
         if ((result.hit || result.missed) && markX > labelX + fontSize * 0.8) {
-          ctx.strokeStyle = result.hit ? colors.onAccent : colors.miss;
+          ctx.strokeStyle = result.hit ? colors.onHit : colors.miss;
           ctx.lineWidth = 3;
           if (result.hit) drawCheck(markX, y + h / 2, fontSize * 0.6);
           else drawCross(markX, y + h / 2, fontSize * 0.5);

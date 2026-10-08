@@ -14,7 +14,7 @@ export const onboardingScreen = {
     let heard = false;
     let cleanup = [];
 
-    const heading = h('h1', {}, 'Welcome! Let’s set you up');
+    const heading = h('h1', {}, 'Set up');
     const dots = h('div', { class: 'setup-dots', 'aria-hidden': 'true' }, ...steps.map(() => h('span')));
     const stepLabel = h('p', { class: 'muted', style: { textAlign: 'center' } });
     const body = h('div');
@@ -111,7 +111,7 @@ export const onboardingScreen = {
           if (!heard) {
             heard = true;
             next.disabled = false;
-            setText(status, 'Got it! That’s your input working.');
+            setText(status, 'Heard it. Your input works.');
           }
         };
         cleanup.push(

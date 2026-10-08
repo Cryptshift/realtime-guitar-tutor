@@ -50,14 +50,14 @@ describe('local storage', () => {
     expect(createStore(undefined).loadSettings()).toEqual({ ...DEFAULT_SETTINGS });
     const broken = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('quota'); } };
     const store = createStore(broken);
-    expect(store.loadSettings().theme).toBe('dark');
+    expect(store.loadSettings().theme).toBe('system');
     expect(store.saveSettings({ theme: 'light' })).toBe(false);
   });
 
   it('keeps settings, user songs, best scores and history', () => {
     const store = createStore(memoryStorage());
     store.saveSettings({ ...store.loadSettings(), instrument: 'piano', onboarded: true });
-    expect(store.loadSettings()).toMatchObject({ instrument: 'piano', onboarded: true, theme: 'dark' });
+    expect(store.loadSettings()).toMatchObject({ instrument: 'piano', onboarded: true, theme: 'system' });
 
     store.saveUserSong({ id: 'a', title: 'A' });
     store.saveUserSong({ id: 'b', title: 'B' });

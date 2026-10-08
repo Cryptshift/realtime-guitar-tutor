@@ -1,4 +1,9 @@
 // Entry point: app shell (header, theme, navigation) and the screen router.
+// Self-hosted fonts (bundled by Vite, so they also work offline and on GitHub Pages).
+import '@fontsource/fraunces/latin-600.css';
+import '@fontsource/fraunces/latin-700.css';
+import '@fontsource/ibm-plex-mono/latin-500.css';
+import '@fontsource/ibm-plex-mono/latin-600.css';
 import { app } from './app/context.js';
 import { createRouter } from './app/router.js';
 import { h, iconEl } from './ui/dom.js';
@@ -9,8 +14,16 @@ import { settingsScreen } from './screens/settings.js';
 import { summaryScreen } from './screens/summary.js';
 import { tunerScreen } from './screens/tuner.js';
 
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+// 'system' (default) follows the OS; 'light' / 'dark' are explicit choices.
+function effectiveTheme() {
+  if (app.settings.theme === 'light' || app.settings.theme === 'dark') return app.settings.theme;
+  return darkQuery.matches ? 'dark' : 'light';
+}
+
 function applyTheme() {
-  document.documentElement.dataset.theme = app.settings.theme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = effectiveTheme();
 }
 
 function renderShell() {
@@ -19,7 +32,7 @@ function renderShell() {
   brand.setAttribute('aria-label', 'Realtime Tutor, go to your songs');
 
   const nav = document.querySelector('#mainNav');
-  const isLight = app.settings.theme === 'light';
+  const isLight = effectiveTheme() === 'light';
   const themeButton = h('button', {
     class: 'btn btn-ghost btn-icon',
     type: 'button',
@@ -46,6 +59,12 @@ function renderShell() {
 
 applyTheme();
 renderShell();
+darkQuery.addEventListener('change', () => {
+  if (app.settings.theme === 'system') {
+    applyTheme();
+    renderShell();
+  }
+});
 app.onSettingsChange((settings, patch) => {
   if ('theme' in patch) applyTheme();
   if ('theme' in patch || 'instrument' in patch) renderShell();

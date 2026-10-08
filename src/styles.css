@@ -1,69 +1,71 @@
-/* Realtime Tutor design system: tokens, components, screens.
-   Dark is the default theme; [data-theme="light"] switches. Every state colour is paired
-   with an icon or shape in the markup, never colour alone. */
+/* Realtime Tutor design system: "practice room". Manuscript paper, pencil ink, one
+   vermilion pencil mark, real instrument materials. Flat surfaces, 1px borders, no
+   gradients or glows. Every state colour is paired with a shape (check, tilde, cross,
+   arrow), never colour alone. Colours live only in the token blocks below; run
+   `npm run check:contrast` after changing them. */
 
-:root,
-[data-theme='dark'] {
-  color-scheme: dark;
-  --bg: #0e1318;
-  --surface: #161d24;
-  --raised: #1f2831;
-  --sunken: #0a0f13;
-  --border: #2c3742;
-  --border-strong: #42505d;
-  --text: #eef2f5;
-  --muted: #a3b1bd;
-  --accent: #3ddc97;
-  --on-accent: #04261a;
-  --accent-soft: rgba(61, 220, 151, 0.16);
-  --hit: #3ddc97;
-  --close: #f7c548;
-  --miss: #ff7a7a;
-  --upcoming: #6cb4ff;
-  --upcoming-soft: rgba(108, 180, 255, 0.22);
-  --focus: #ffd166;
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  --scrim: rgba(3, 6, 9, 0.62);
-  --key-white: #e9eef2;
-  --key-white-text: #1b232b;
-  --key-black: #11171d;
-  --fret-wire: #9aa6b1;
-  --string: #c9d2da;
+/* tokens:materials */
+:root {
+  --rosewood: #3B2418;
+  --bone: #E9E0CC;
+  --nickel: #B8B2A6;
+  --bronze: #C9A66B;
+  --steel: #D9D9D6;
+  --ivory: #F7F1E3;
+  --ebony: #1A1714;
+  --ink: #1E1B16;
 }
 
-[data-theme='light'] {
+/* tokens:light ("Paper") */
+:root,
+:root[data-theme='light'] {
   color-scheme: light;
-  --bg: #f5f7f9;
-  --surface: #ffffff;
-  --raised: #eef2f5;
-  --sunken: #e6ebef;
-  --border: #d5dde4;
-  --border-strong: #aab7c2;
-  --text: #101820;
-  --muted: #4a5865;
-  --accent: #04704c;
-  --on-accent: #ffffff;
-  --accent-soft: rgba(4, 112, 76, 0.12);
-  --hit: #04704c;
-  --close: #8a5a00;
-  --miss: #b42318;
-  --upcoming: #1d5fbf;
-  --upcoming-soft: rgba(29, 95, 191, 0.14);
-  --focus: #1d5fbf;
-  --shadow: 0 8px 24px rgba(16, 24, 32, 0.12);
-  --scrim: rgba(16, 24, 32, 0.45);
-  --key-white: #ffffff;
-  --key-white-text: #1b232b;
-  --key-black: #1b232b;
-  --fret-wire: #8a96a1;
-  --string: #59636c;
+  --bg: #F3EEE4;
+  --surface: #FBF8F2;
+  --raised: #EAE3D6;
+  --sunken: #E4DCCD;
+  --border: #D6CCBA;
+  --border-strong: #948874;
+  --text: #1E1B16;
+  --muted: #5E5648;
+  --accent: #BE402C;
+  --on-accent: #FFF8F0;
+  --hit: #2E6B3F;
+  --on-hit: #FBF8F2;
+  --close: #A86A12;
+  --miss: #7A7166;
+  --focus: #1E1B16;
+  --scrim: #1E1B16;
+}
+
+/* tokens:dark ("Stage") */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #171411;
+  --surface: #201C18;
+  --raised: #2A2520;
+  --sunken: #110F0D;
+  --border: #3A332B;
+  --border-strong: #776E62;
+  --text: #F1E9DC;
+  --muted: #B3A794;
+  --accent: #E8553D;
+  --on-accent: #1A0D08;
+  --hit: #8DC47E;
+  --on-hit: #171411;
+  --close: #E0A84A;
+  --miss: #8A8073;
+  --focus: #F1E9DC;
+  --scrim: #000000;
 }
 
 :root {
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --radius-sm: 8px;
-  --radius: 12px;
-  --radius-lg: 16px;
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius-sm: 4px;
+  --radius: 5px;
+  --radius-lg: 6px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -104,6 +106,26 @@ h2,
 h3 {
   line-height: 1.2;
   margin: 0;
+  font-family: var(--font-display);
+  letter-spacing: -0.005em;
+}
+
+/* Display serif for the big readouts; mono for tab numbers and note lists. */
+.now-note,
+.tuner-note,
+.heard-note,
+.score-hero .big-number,
+.countin,
+.stat .value {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+kbd,
+.mono,
+.tricky-list li,
+.tempo-control output {
+  font-family: var(--font-mono);
 }
 
 h1 {
@@ -189,8 +211,7 @@ h1:focus {
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-2) var(--space-5);
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 
@@ -235,7 +256,7 @@ h1:focus {
 .app-nav a.is-active {
   color: var(--text);
   background: var(--raised);
-  box-shadow: inset 0 -3px 0 var(--accent);
+  border-bottom: 3px solid var(--accent);
 }
 
 main {
@@ -256,7 +277,6 @@ main {
   border-radius: var(--radius);
   background: var(--raised);
   border: 1px solid var(--border-strong);
-  box-shadow: var(--shadow);
   font-weight: 600;
   transition: opacity var(--t) ease-out, transform var(--t) ease-out;
 }
@@ -342,7 +362,7 @@ kbd {
   border: 1px solid currentColor;
   border-bottom-width: 2px;
   border-radius: 6px;
-  font: 600 0.8em var(--font);
+  font: 500 0.8em var(--font-mono);
   text-align: center;
   opacity: 0.8;
 }
@@ -424,7 +444,7 @@ input[type='radio'] {
   min-height: 44px;
   padding: 0 var(--space-4);
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -439,8 +459,8 @@ input[type='radio'] {
 
 .chip[aria-pressed='true'],
 .chip[aria-checked='true'] {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  background: var(--raised);
+  border-color: var(--text);
 }
 
 .chip[aria-pressed='true']::before,
@@ -462,7 +482,8 @@ input[type='radio'] {
   min-height: 40px;
   padding: 0 var(--space-4);
   border: 0;
-  border-radius: 9px;
+  border-bottom: 3px solid transparent;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   font: inherit;
@@ -473,7 +494,7 @@ input[type='radio'] {
 .segmented button[aria-checked='true'] {
   background: var(--raised);
   color: var(--text);
-  box-shadow: inset 0 -3px 0 var(--accent);
+  border-bottom: 3px solid var(--accent);
 }
 
 .card {
@@ -488,7 +509,7 @@ input[type='radio'] {
   align-items: center;
   gap: var(--space-1);
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   font-size: 14px;
   font-weight: 600;
@@ -516,14 +537,14 @@ input[type='radio'] {
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--close);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--close);
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--close) 12%, transparent);
+  background: var(--surface);
 }
 
 .banner.is-error {
-  border-color: var(--miss);
-  background: color-mix(in srgb, var(--miss) 12%, transparent);
+  border-left-color: var(--accent);
 }
 
 .status-line {
@@ -551,11 +572,13 @@ dialog {
   border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--text);
-  box-shadow: var(--shadow);
+  /* The one floating surface that gets a shadow. */
+  box-shadow: 0 18px 40px -18px var(--scrim);
 }
 
 dialog::backdrop {
   background: var(--scrim);
+  opacity: 0.5;
 }
 
 .dialog-head {
@@ -639,8 +662,8 @@ dialog::backdrop {
   justify-content: space-between;
   gap: var(--space-4);
   margin-bottom: var(--space-5);
-  border-color: var(--accent);
-  background: linear-gradient(120deg, var(--accent-soft), transparent 60%), var(--surface);
+  border-left: 4px solid var(--accent);
+  background: var(--surface);
 }
 
 .continue-card h2 {
@@ -788,7 +811,7 @@ dialog::backdrop {
   position: relative;
   display: flex;
   height: 34px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   overflow: hidden;
   background: var(--sunken);
   border: 1px solid var(--border);
@@ -820,7 +843,7 @@ dialog::backdrop {
   position: absolute;
   inset: 0 auto 0 0;
   width: 0;
-  background: var(--accent-soft);
+  background: var(--raised);
   pointer-events: none;
 }
 
@@ -829,8 +852,7 @@ dialog::backdrop {
   top: 0;
   bottom: 0;
   border: 2px dashed var(--close);
-  background: color-mix(in srgb, var(--close) 14%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   pointer-events: none;
 }
 
@@ -992,10 +1014,9 @@ dialog::backdrop {
 
 .tune-meter .scale {
   position: absolute;
-  inset: 11px 0;
-  border-radius: 2px;
-  background: linear-gradient(90deg, var(--miss), var(--close) 30%, var(--hit) 45%, var(--hit) 55%, var(--close) 70%, var(--miss));
-  opacity: 0.6;
+  inset: 12px 0;
+  border-radius: 1px;
+  background: var(--border-strong);
 }
 
 .tune-meter .center {
@@ -1058,7 +1079,7 @@ dialog::backdrop {
   font-size: clamp(90px, 16vw, 200px);
   font-weight: 800;
   color: var(--accent);
-  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  background: var(--surface);
   border-radius: var(--radius-lg);
   pointer-events: none;
 }
@@ -1070,7 +1091,7 @@ dialog::backdrop {
   transform: translateX(-50%);
   max-width: calc(100% - 32px);
   padding: var(--space-2) var(--space-4);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--raised);
   border: 1px solid var(--border-strong);
   font-weight: 650;
@@ -1126,29 +1147,38 @@ dialog::backdrop {
   background: var(--accent);
 }
 
-/* Fretboard SVG */
-.fretboard .fb-string {
-  stroke: var(--string);
+/* Fretboard SVG: rosewood, bone, nickel, bronze and steel */
+.fretboard .fb-board {
+  fill: var(--rosewood);
+}
+
+.fretboard .fb-string-plain {
+  stroke: var(--steel);
+}
+
+.fretboard .fb-string-wound {
+  stroke: var(--bronze);
 }
 
 .fretboard .fb-fret {
-  stroke: var(--fret-wire);
+  stroke: var(--nickel);
   stroke-width: 3;
 }
 
 .fretboard .fb-nut {
-  stroke: var(--text);
-  stroke-width: 9;
+  stroke: var(--bone);
+  stroke-width: 10;
 }
 
 .fretboard .fb-inlay {
-  fill: var(--border-strong);
+  fill: var(--bone);
+  opacity: 0.85;
 }
 
 .fretboard .fb-fretnum,
 .fretboard .fb-position {
   fill: var(--muted);
-  font: 600 22px var(--font);
+  font: 600 22px var(--font-mono);
   text-anchor: middle;
 }
 
@@ -1158,13 +1188,13 @@ dialog::backdrop {
 
 .fretboard .fb-stringname {
   fill: var(--muted);
-  font: 700 26px var(--font);
+  font: 600 26px var(--font-mono);
   text-anchor: middle;
 }
 
 .fretboard .fb-dot {
   fill: var(--accent);
-  stroke: var(--surface);
+  stroke: var(--bone);
   stroke-width: 3;
 }
 
@@ -1176,32 +1206,36 @@ dialog::backdrop {
 
 .fretboard .fb-next {
   fill: none;
-  stroke: var(--upcoming);
+  stroke: var(--bone);
   stroke-width: 3;
   stroke-dasharray: 6 5;
 }
 
+.fretboard .fb-next-off {
+  stroke: var(--text);
+}
+
 .fretboard .fb-finger {
   fill: var(--on-accent);
-  font: 800 24px var(--font);
+  font: 600 26px var(--font-mono);
   text-anchor: middle;
 }
 
 .fretboard .fb-opennum {
   fill: var(--accent);
-  font: 800 22px var(--font);
+  font: 600 24px var(--font-mono);
   text-anchor: middle;
 }
 
 /* Piano keyboard SVG */
 .keyboard .pk-white {
-  fill: var(--key-white);
+  fill: var(--ivory);
   stroke: var(--border-strong);
   stroke-width: 2;
 }
 
 .keyboard .pk-black {
-  fill: var(--key-black);
+  fill: var(--ebony);
   stroke: var(--border-strong);
   stroke-width: 1.5;
 }
@@ -1212,16 +1246,16 @@ dialog::backdrop {
 
 .keyboard .pk-next {
   fill: none;
-  stroke: var(--upcoming);
+  stroke: var(--ink);
   stroke-width: 4;
   stroke-dasharray: 8 6;
 }
 
 .keyboard .pk-label {
-  fill: var(--key-white-text);
-  font: 600 17px var(--font);
+  fill: var(--ink);
+  font: 500 17px var(--font-mono);
   text-anchor: middle;
-  opacity: 0.75;
+  opacity: 0.8;
 }
 
 .keyboard .pk-label-c {
@@ -1245,7 +1279,7 @@ dialog::backdrop {
 
 .keyboard .pk-finger {
   fill: var(--accent);
-  font: 800 24px var(--font);
+  font: 600 26px var(--font-mono);
   text-anchor: middle;
 }
 
@@ -1356,7 +1390,7 @@ dialog::backdrop {
 
 .tuner-gauge .tick-label {
   fill: var(--muted);
-  font: 600 18px var(--font);
+  font: 500 18px var(--font-mono);
   text-anchor: middle;
 }
 
@@ -1521,13 +1555,13 @@ dialog::backdrop {
 
 .instrument-pick[aria-checked='true'] {
   border-color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--raised);
 }
 
 .level-bar {
   width: min(360px, 80vw);
   height: 14px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: var(--sunken);
   border: 1px solid var(--border);
   overflow: hidden;
@@ -1564,7 +1598,7 @@ dialog::backdrop {
 
 .calibration-beats span.is-now {
   border-color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--raised);
 }
 
 .calibration-beats span.is-heard {

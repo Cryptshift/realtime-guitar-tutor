@@ -36,7 +36,7 @@ const PATHS = {
   ukulele: '<path d="M18.5 3.5l2 2-5.5 5.5"/><circle cx="10" cy="14" r="4.5"/><circle cx="10" cy="14" r="1.2" fill="currentColor"/>',
   piano: '<rect x="2.5" y="5" width="19" height="14" rx="1.5"/><path d="M7.5 5v14M12 5v14M16.5 5v14"/><rect x="6" y="5" width="3" height="8" fill="currentColor" stroke="none"/><rect x="15" y="5" width="3" height="8" fill="currentColor" stroke="none"/>',
   loop: '<path d="M7 7h10a4 4 0 0 1 0 8h-1"/><path d="M17 17H7a4 4 0 0 1 0-8h1"/><path d="M14 13l2 2-2 2M10 11L8 9l2-2"/>',
-  flame: '<path d="M12 21a6 6 0 0 0 6-6c0-4-3-6-4-10-2 2-2.5 4-2 6-1.5-.5-2.5-2-2.5-3.5C7 9 6 11.5 6 15a6 6 0 0 0 6 6z"/>',
+  tilde: '<path d="M3.5 13.5c1.6-3 3.6-4 5.5-3s3.4 3 5.5 3 3.4-1.4 6-4"/>',
   upload: '<path d="M12 16V4M6.5 9.5L12 4l5.5 5.5M4 20h16"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".7" fill="currentColor"/>',
 };
