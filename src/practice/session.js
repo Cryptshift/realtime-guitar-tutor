@@ -244,9 +244,12 @@ export function createPracticeSession({
       return;
     }
 
-    // Wrong pitch after a fresh attack: count it once, and say how to fix it.
-    const stable = s.heard.exact || nowMs - s.heard.since >= WRONG_NOTE_STABLE_MS;
-    if (fresh && stable && onset) registerWrong(group[0], nowMs, onset.id);
+    // Wrong pitch after a fresh attack: count it once, and say how to fix it. (A note still
+    // ringing from the previous step is not an attempt, so it gets no hint.)
+    if (!fresh) return;
+    const stable = s.heard.exact || nowMs - Math.max(s.heard.since, onset ? onset.timeMs : -Infinity) >= WRONG_NOTE_STABLE_MS;
+    if (!stable) return;
+    if (onset) registerWrong(group[0], nowMs, onset.id);
     hintFeedback(group[0], nowMs);
   }
 
@@ -298,7 +301,8 @@ export function createPracticeSession({
     const onset = latestOnset();
     const due = candidates.filter((note) => !s.results[note.index].hit);
     if (s.heard && onset && due.length && !due.some((note) => matches(note) || s.held.has(note.midi))) {
-      const stable = s.heard.exact || nowMs - s.heard.since >= WRONG_NOTE_STABLE_MS;
+      // Judge the pitch that follows the attack, not the previous note still in the window.
+      const stable = s.heard.exact || nowMs - Math.max(s.heard.since, onset.timeMs) >= WRONG_NOTE_STABLE_MS;
       const recent = onset.pieceSeconds !== null && Math.abs(onset.pieceSeconds - due[0].start) <= due[0].onsetWindow;
       if (stable && recent) {
         registerWrong(due[0], nowMs, onset.id);
@@ -359,6 +363,12 @@ export function createPracticeSession({
     get loop() { return s.loop; },
     get tempoPercent() { return s.tempoPercent; },
     get laps() { return s.laps; },
+    beatSeconds,
+
+    // Wall-clock time (ms) at which the running piece reaches `seconds` (play mode).
+    timeToMs(seconds) {
+      return s.clock.msAt(seconds);
+    },
 
     // Wait mode: arms the run (the first correct note starts it). Play mode: count-in, then go.
     start(nowMs) {

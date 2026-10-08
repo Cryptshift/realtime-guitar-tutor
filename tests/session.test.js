@@ -69,8 +69,18 @@ describe('practice session: Wait for me', () => {
     strum(session, 'F4', 0, 200);
     expect(session.view(200).feedback.text).toBe('You played F, aim for E: one fret lower');
     session.onPitch({ timeMs: 400, midi: midi('E4') + 0.45, onsetTimeMs: 400 });
-    session.onPitch({ timeMs: 405, midi: midi('E4') + 0.45 });
-    expect(session.view(405).feedback.text).toBe('A little sharp');
+    for (let t = 405; t <= 500; t += 5) session.onPitch({ timeMs: t, midi: midi('E4') + 0.45 });
+    expect(session.view(500).feedback.text).toBe('A little sharp');
+  });
+
+  it('keeps the praise while the previous note still sounds', () => {
+    const session = createPracticeSession({ piece: makePiece(['G4', 'F4']), instrument: piano, mode: 'wait' });
+    session.start(0);
+    session.onNoteOn({ midi: midi('G4'), timeMs: 100 });
+    session.tick(150);
+    session.tick(300);
+    expect(session.view(300).feedback.tone).toBe('hit');
+    expect(session.results[1].wrongAttempts).toBe(0);
   });
 
   it('loops a section', () => {
@@ -138,6 +148,17 @@ describe('practice session: Play along', () => {
     session.start(0);
     session.onNoteOn({ midi: midi('C4'), timeMs: 400 });
     expect(session.results[0].hit).toBe(false);
+  });
+
+  it('does not count the previous note ringing into a new attack as a wrong note', () => {
+    const session = createPracticeSession({ piece: makePiece(['C4', 'G4'], { instrument: guitar }), instrument: guitar, mode: 'play', countInBeats: 0 });
+    session.start(0);
+    strum(session, 'C4', 0, 1030);
+    // New attack at 1.0 s, but the detector still reports C4 for 40 ms.
+    session.onPitch({ timeMs: 1035, midi: midi('C4'), onsetTimeMs: 1000 });
+    for (let t = 1040; t <= 1045; t += 5) session.onPitch({ timeMs: t, midi: midi('C4') });
+    strum(session, 'G4', 1050, 1400, { onset: false });
+    expect(session.results[1]).toMatchObject({ hit: true, wrongAttempts: 0 });
   });
 
   it('counts in, pauses and resumes without losing its place', () => {
