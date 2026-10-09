@@ -30,7 +30,7 @@ export const summaryScreen = {
 
     // Both hands: accuracy per hand, the weaker one marked with a shape as well as words.
     const byHand = summary.byHand;
-    const weaker = byHand && byHand.L.accuracy !== byHand.R.accuracy ? (byHand.L.accuracy < byHand.R.accuracy ? 'L' : 'R') : null;
+    const weaker = summary.weakerHand;
     const handStats = byHand
       ? h('div', { class: 'stat-row hand-stats', role: 'group', 'aria-label': 'Accuracy per hand' }, ...['R', 'L'].map((hand) => h('div', { class: `stat${hand === weaker ? ' is-weaker' : ''}` },
         h('span', { class: 'label' }, HAND_NAMES[hand]),

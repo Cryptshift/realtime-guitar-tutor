@@ -106,10 +106,11 @@ export function computeSummary({ piece, results, mode, tempoPercent = 100, descr
 
   // Two hands: if one lags well behind, practise it alone first; one hand mastered: put
   // them together.
-  const weaker = byHand ? (byHand.L.accuracy < byHand.R.accuracy ? 'L' : 'R') : null;
-  const stronger = weaker === 'L' ? 'R' : 'L';
+  const lower = byHand ? (byHand.L.accuracy < byHand.R.accuracy ? 'L' : 'R') : null;
+  const stronger = lower === 'L' ? 'R' : 'L';
+  const weaker = byHand && byHand[lower].accuracy < 0.9 && byHand[stronger].accuracy - byHand[lower].accuracy >= 0.1 ? lower : null;
   let suggestion;
-  if (byHand && byHand[weaker].accuracy < 0.9 && byHand[stronger].accuracy - byHand[weaker].accuracy >= 0.1) {
+  if (weaker) {
     suggestion = {
       text: `Your ${HAND_WORDS[weaker]} hand is behind (${percent(byHand[weaker].accuracy)}, against ${percent(byHand[stronger].accuracy)}). Practise the ${HAND_WORDS[weaker]} hand alone in "Wait for me", then play both hands again.`,
       hands: weaker,
@@ -138,6 +139,8 @@ export function computeSummary({ piece, results, mode, tempoPercent = 100, descr
     accuracy,
     hands: practised,
     byHand,
+    // The hand that clearly trails (worth practising alone), or null.
+    weakerHand: weaker,
     stars: starsFor(accuracy),
     timing,
     meanOffsetMs,

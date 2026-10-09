@@ -142,6 +142,7 @@ describe('run summary with two hands', () => {
     expect(summary.byHand.R).toMatchObject({ notes: 16, hits: 16, accuracy: 1 });
     expect(summary.byHand.L).toMatchObject({ notes: 8, hits: 4, accuracy: 0.5 });
     expect(summary.accuracy).toBeCloseTo(20 / 24, 6);
+    expect(summary.weakerHand).toBe('L');
     expect(summary.suggestion).toMatchObject({ hands: 'L', mode: 'wait' });
     expect(summary.suggestion.text).toBe('Your left hand is behind (50%, against 100%). Practise the left hand alone in "Wait for me", then play both hands again.');
   });
@@ -151,7 +152,7 @@ describe('run summary with two hands', () => {
     // Left-hand notes have no results at all when only the right hand was practised.
     const results = piece.notes.map((note) => (note.hand === 'R' ? { hit: true } : { hit: false }));
     const summary = computeSummary({ piece, results, mode: 'wait', tempoPercent: 70, hands: 'R' });
-    expect(summary).toMatchObject({ notes: 16, hits: 16, accuracy: 1, byHand: null, hands: 'R' });
+    expect(summary).toMatchObject({ notes: 16, hits: 16, accuracy: 1, byHand: null, hands: 'R', weakerHand: null });
     expect(summary.suggestion).toMatchObject({ hands: 'both' });
     expect(summary.suggestion.text).toBe('Your right hand has it. Now try both hands together.');
   });
@@ -180,5 +181,30 @@ describe('built-in two-handed songs', () => {
       expect(Math.max(...left.map((n) => n.end))).toBeCloseTo(Math.max(...right.map((n) => n.end)), 1);
     }
     expect(isTwoHanded(normalizePiece(BUILT_IN_SONGS.find((s) => s.id === 'piano-mary').piece, getInstrument('piano')))).toBe(false);
+  });
+});
+
+describe('weaker hand', () => {
+  it('is only named when it clearly trails', () => {
+    const piece = normalizePiece({
+      bpm: 60,
+      notes: [
+        ...Array.from({ length: 14 }, (_, i) => ({ note: 'E4', start: i, duration: 1, hand: 'R' })),
+        ...Array.from({ length: 8 }, (_, i) => ({ note: 'C3', start: i * 2, duration: 2, hand: 'L' })),
+      ],
+    }, getInstrument('piano'));
+    // Right hand 13 of 14 (93%), left hand 8 of 8: close enough, no hand to single out.
+    let missed = false;
+    const results = piece.notes.map((note) => {
+      if (note.hand === 'R' && !missed) {
+        missed = true;
+        return { hit: false, missed: true };
+      }
+      return { hit: true, timingMs: 0 };
+    });
+    const summary = computeSummary({ piece, results, mode: 'play', tempoPercent: 100, hands: 'both' });
+    expect(summary.byHand.R.accuracy).toBeCloseTo(13 / 14, 6);
+    expect(summary.weakerHand).toBeNull();
+    expect(summary.suggestion.hands).toBeUndefined();
   });
 });
