@@ -30,3 +30,24 @@ export function writeMidi({ format = 1, ticksPerQuarter = 480, tracks }) {
   });
   return new Uint8Array(bytes);
 }
+
+// A track from a note list: [{ midi, start, length, velocity? }] in ticks, on `channel`
+// (0-based). Note-offs come before note-ons at the same tick.
+export function trackFromNotes({ name = '', channel = 0, notes, tempo = null }) {
+  const events = [];
+  notes.forEach((note) => {
+    events.push({ tick: note.start, order: 1, bytes: [0x90 | channel, note.midi, note.velocity ?? 80] });
+    events.push({ tick: note.start + note.length, order: 0, bytes: [0x80 | channel, note.midi, 0] });
+  });
+  events.sort((a, b) => a.tick - b.tick || a.order - b.order);
+  const out = [];
+  if (name) out.push({ delta: 0, bytes: meta.name(name) });
+  if (tempo) out.push({ delta: 0, bytes: meta.tempo(tempo) });
+  let tick = 0;
+  events.forEach((event) => {
+    out.push({ delta: event.tick - tick, bytes: event.bytes });
+    tick = event.tick;
+  });
+  out.push({ delta: 0, bytes: meta.end() });
+  return out;
+}

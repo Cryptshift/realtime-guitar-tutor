@@ -207,17 +207,13 @@ export function defaultMidiTrack(parsed) {
 
 const QUANTIZE_DIVISIONS = { '1/4': 1, '1/8': 2, '1/16': 4 };
 
-// Converts one track into a raw piece ({ name, bpm, notes: [{ note, start, duration }] }).
-// quantize: null | '1/4' | '1/8' | '1/16' snaps starts and lengths to that grid (in ticks,
-// so tempo changes are respected).
-export function midiTrackToPiece(parsed, { trackIndex = defaultMidiTrack(parsed), quantize = null, name = '', instrument } = {}) {
-  const track = parsed.tracks.find((t) => t.index === trackIndex);
-  if (!track || !track.notes.length) throw new Error('That track has no notes');
+// Converts parsed notes to raw piece notes ({ note, start, duration }), optionally snapped
+// to a grid: quantize null | '1/4' | '1/8' | '1/16' (in ticks, so tempo changes are respected).
+export function midiNotesToRaw(parsed, notes, quantize = null) {
   const division = QUANTIZE_DIVISIONS[quantize];
   const grid = division ? parsed.ticksPerQuarter / division : null;
   const snap = (tick) => (grid ? Math.round(tick / grid) * grid : tick);
-
-  const notes = track.notes.map((note) => {
+  return notes.map((note) => {
     const startTick = snap(note.startTick);
     const endTick = Math.max(startTick + (grid || 1), snap(note.endTick));
     const start = parsed.toSeconds(startTick);
@@ -228,6 +224,13 @@ export function midiTrackToPiece(parsed, { trackIndex = defaultMidiTrack(parsed)
       duration: Number(Math.max(0.05, duration).toFixed(4)),
     };
   });
+}
+
+// Converts one track into a raw piece ({ name, bpm, notes: [{ note, start, duration }] }).
+export function midiTrackToPiece(parsed, { trackIndex = defaultMidiTrack(parsed), quantize = null, name = '', instrument } = {}) {
+  const track = parsed.tracks.find((t) => t.index === trackIndex);
+  if (!track || !track.notes.length) throw new Error('That track has no notes');
+  const notes = midiNotesToRaw(parsed, track.notes, quantize);
 
   return {
     name: name || track.name || 'MIDI import',
