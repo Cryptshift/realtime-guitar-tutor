@@ -1515,7 +1515,12 @@ dialog::backdrop {
   font-weight: 600;
 }
 
-/* Per-hand accuracy: the weaker hand gets a heavier border and the words "needs work". */
+/* Per-hand accuracy, side by side even on a phone; the weaker hand gets a heavier border
+   and the words "needs work". */
+.hand-stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .hand-stats .stat.is-weaker {
   border: 2px solid var(--text);
 }

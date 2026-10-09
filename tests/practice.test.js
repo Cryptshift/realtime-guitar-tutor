@@ -144,7 +144,7 @@ describe('run summary with two hands', () => {
     expect(summary.accuracy).toBeCloseTo(20 / 24, 6);
     expect(summary.weakerHand).toBe('L');
     expect(summary.suggestion).toMatchObject({ hands: 'L', mode: 'wait' });
-    expect(summary.suggestion.text).toBe('Your left hand is behind (50%, against 100%). Practise the left hand alone in "Wait for me", then play both hands again.');
+    expect(summary.suggestion.text).toBe('Your left hand is behind (50%, against 100%). Practice the left hand alone in "Wait for me", then play both hands again.');
   });
 
   it('scores only the practised hand, and then suggests both hands together', () => {

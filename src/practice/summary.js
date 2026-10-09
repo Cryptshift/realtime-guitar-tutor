@@ -112,7 +112,7 @@ export function computeSummary({ piece, results, mode, tempoPercent = 100, descr
   let suggestion;
   if (weaker) {
     suggestion = {
-      text: `Your ${HAND_WORDS[weaker]} hand is behind (${percent(byHand[weaker].accuracy)}, against ${percent(byHand[stronger].accuracy)}). Practise the ${HAND_WORDS[weaker]} hand alone in "Wait for me", then play both hands again.`,
+      text: `Your ${HAND_WORDS[weaker]} hand is behind (${percent(byHand[weaker].accuracy)}, against ${percent(byHand[stronger].accuracy)}). Practice the ${HAND_WORDS[weaker]} hand alone in "Wait for me", then play both hands again.`,
       hands: weaker,
       mode: 'wait',
     };

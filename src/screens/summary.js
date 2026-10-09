@@ -54,21 +54,21 @@ export const summaryScreen = {
       : h('section', { class: 'card' }, h('p', {}, iconEl('check'), ' No mistakes.'));
 
     const actions = h('div', { class: 'summary-actions' });
-    if (summary.trickyBar) {
-      actions.append(h('button', {
-        class: 'btn btn-primary btn-lg',
-        type: 'button',
-        onclick: () => {
-          app.pendingPractice = {
-            songId: song.id, loop: summary.trickyBar.loop, tempoPercent: summary.trickyBar.tempoPercent, mode: 'wait', hands: run.hands || null,
-          };
-          app.go(`practice/${encodeURIComponent(song.id)}`);
-        },
-      }, iconEl('loop'), `Practice the tricky part (bar ${summary.trickyBar.bar}, ${summary.trickyBar.tempoPercent}%)`));
-    }
     const suggestion = summary.suggestion;
-    actions.append(h('button', {
-      class: summary.trickyBar ? 'btn btn-lg' : 'btn btn-primary btn-lg',
+    // A hand to practise alone is the clearest next step, so it leads; otherwise the tricky bar.
+    const handFirst = Boolean(suggestion.hands && suggestion.hands !== 'both');
+    const trickyButton = summary.trickyBar ? h('button', {
+      class: handFirst ? 'btn btn-lg' : 'btn btn-primary btn-lg',
+      type: 'button',
+      onclick: () => {
+        app.pendingPractice = {
+          songId: song.id, loop: summary.trickyBar.loop, tempoPercent: summary.trickyBar.tempoPercent, mode: 'wait', hands: run.hands || null,
+        };
+        app.go(`practice/${encodeURIComponent(song.id)}`);
+      },
+    }, iconEl('loop'), `Practice the tricky part (bar ${summary.trickyBar.bar}, ${summary.trickyBar.tempoPercent}%)`) : null;
+    const nextButton = h('button', {
+      class: summary.trickyBar && !handFirst ? 'btn btn-lg' : 'btn btn-primary btn-lg',
       type: 'button',
       onclick: () => {
         app.pendingPractice = {
@@ -80,7 +80,9 @@ export const summaryScreen = {
         };
         app.go(`practice/${encodeURIComponent(song.id)}`);
       },
-    }, iconEl('play'), suggestion.hands && suggestion.hands !== 'both' ? `Practise the ${HAND_NAMES[suggestion.hands].toLowerCase()}` : 'Next step'));
+    }, iconEl('play'), handFirst ? `Practice the ${HAND_NAMES[suggestion.hands].toLowerCase()} alone` : 'Next step');
+    if (handFirst) actions.append(nextButton, ...(trickyButton ? [trickyButton] : []));
+    else actions.append(...(trickyButton ? [trickyButton] : []), nextButton);
     actions.append(h('a', { class: 'btn btn-lg', href: practiceHref }, iconEl('restart'), 'Play again'));
     actions.append(h('a', { class: 'btn btn-ghost btn-lg', href: '#/library' }, iconEl('library'), 'Library'));
 
