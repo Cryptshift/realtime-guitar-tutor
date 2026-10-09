@@ -1982,6 +1982,17 @@ dialog::backdrop {
     font-weight: 650;
   }
 
+  .options-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+
+  .options-summary .badge {
+    padding: 1px 6px;
+    font-size: 13px;
+  }
+
   .practice-options[open] > .practice-controls {
     padding-bottom: var(--space-3);
   }

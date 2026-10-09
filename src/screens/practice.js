@@ -176,7 +176,7 @@ export const practiceScreen = {
         twoHanded ? h('label', { class: 'switch' }, otherHandBox, 'Play the other hand quietly when practising one hand (Play along)') : null));
 
     // On phones the controls fold into an "Options" disclosure; on larger screens it stays open.
-    const optionsSummary = h('span', {}, '');
+    const optionsSummary = h('span', { class: 'options-summary' });
     const controls = h('details', { class: 'practice-options', open: true },
       h('summary', {}, iconEl('settings'), h('span', {}, 'Options'), optionsSummary),
       h('div', { class: 'practice-controls' },
@@ -650,9 +650,13 @@ export const practiceScreen = {
       startHint.hidden = !hint;
       setText(startHint, hint);
 
-      // Wraps only between the items (no-break spaces inside them).
+      // One badge per setting: badges wrap cleanly, where " · " separators left dots dangling.
       const summaryItems = [mode === 'wait' ? 'Wait for me' : 'Play along', `${tempo}%`, ...(twoHanded ? [HAND_NAMES[hands]] : [])];
-      setText(optionsSummary, summaryItems.map((item) => ` · ${item.replace(/ /g, '\u00a0')}`).join(''));
+      const summaryKey = summaryItems.join('|');
+      if (optionsSummary.dataset.key !== summaryKey) {
+        optionsSummary.dataset.key = summaryKey;
+        optionsSummary.replaceChildren(...summaryItems.map((item) => h('span', { class: 'badge' }, item)));
+      }
 
       // Primary button.
       const running = view.status === 'running' || view.status === 'countin' || (mode === 'wait' && view.status === 'ready');
