@@ -14,7 +14,9 @@ export const isBlackKey = (midi) => BLACK_PITCH_CLASSES.has(((midi % 12) + 12) %
 
 const LOWEST = 21; // A0
 const HIGHEST = 108; // C8
-const VIEW_WIDTH = 1000;
+// Two octaves (14 white keys) are 1000 units wide; wider ranges widen the view instead of
+// squeezing the keys, so a long keyboard fills the width and gets shorter, not narrower.
+const UNITS_PER_WHITE_KEY = 1000 / 14;
 const WHITE_HEIGHT = 230;
 const BLACK_HEIGHT = 145;
 // Narrowest white key on screen (CSS px) and the gap between two sections (in white keys).
@@ -189,11 +191,12 @@ export function renderKeyboard(container, {
       if (isBlackKey(midi) && left && inSection.has(midi + 1)) blacks.push({ midi, slot: left.slot + 1 });
     }
   });
-  const whiteWidth = VIEW_WIDTH / Math.max(1, slot);
+  const viewWidth = Math.max(1000, slot * UNITS_PER_WHITE_KEY);
+  const whiteWidth = viewWidth / Math.max(1, slot);
   const blackWidth = whiteWidth * 0.62;
 
   // Text sized for the screen: at least ~11 px on a phone, never wider than its key.
-  const unitsPerPx = width > 0 ? VIEW_WIDTH / width : 1;
+  const unitsPerPx = width > 0 ? viewWidth / width : 1;
   const labelSize = Math.min(Math.max(17, 11 * unitsPerPx), whiteWidth * 0.5);
   const badgeSize = Math.min(Math.max(26, 13 * unitsPerPx), whiteWidth * 0.55);
   const badgeRadius = Math.min(whiteWidth * 0.46, badgeSize * 1.05);
@@ -274,7 +277,7 @@ export function renderKeyboard(container, {
   const sectionsText = layout.sections.length > 1
     ? ` Showing ${layout.sections.map((s) => `${label(s.low)} to ${label(s.high)}`).join(' and ')}.`
     : '';
-  container.innerHTML = `<svg class="keyboard" viewBox="0 0 ${VIEW_WIDTH} ${WHITE_HEIGHT}" role="img" aria-label="${caption}. Next: ${nextText}.${sectionsText}">${parts.join('')}${overlays.join('')}</svg>`;
+  container.innerHTML = `<svg class="keyboard" viewBox="0 0 ${px(viewWidth)} ${WHITE_HEIGHT}" role="img" aria-label="${caption}. Next: ${nextText}.${sectionsText}">${parts.join('')}${overlays.join('')}</svg>`;
   return {
     caption,
     target: describeNotes(currentNotes, twoHanded),
