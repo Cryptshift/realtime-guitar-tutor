@@ -943,6 +943,26 @@ dialog::backdrop {
   gap: var(--space-3) var(--space-5);
 }
 
+/* Two-handed pieces add the Hands control: keep the row on one line. */
+.practice-controls:has(.hands-control) {
+  column-gap: var(--space-4);
+}
+
+.hands-control {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+
+.control-label {
+  font-weight: 600;
+}
+
+.hands-hint {
+  flex-basis: 100%;
+}
+
 .tempo-control {
   display: flex;
   align-items: center;
@@ -1082,6 +1102,11 @@ dialog::backdrop {
   font-size: 18px;
   color: var(--muted);
   min-height: 1.4em;
+}
+
+/* Only Play along has timing details ("50 ms late"); Wait for me doesn't keep the room. */
+.now-card[data-mode='wait'] .feedback-detail:empty {
+  display: none;
 }
 
 .tune-meter {
@@ -1488,6 +1513,11 @@ dialog::backdrop {
 .stat .label {
   color: var(--muted);
   font-weight: 600;
+}
+
+/* Per-hand accuracy: the weaker hand gets a heavier border and the words "needs work". */
+.hand-stats .stat.is-weaker {
+  border: 2px solid var(--text);
 }
 
 .card > h2 + * {

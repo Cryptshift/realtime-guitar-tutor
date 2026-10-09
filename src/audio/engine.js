@@ -223,6 +223,25 @@ export function createAudioEngine() {
       osc.stop(when + 0.06);
     },
 
+    // A soft note at performance time `atMs` lasting `durationMs` (e.g. the hand that isn't
+    // being practised, played quietly). volume 0..1, on the same scale as the guide tone.
+    tone(frequency, atMs, durationMs, volume = 0.3) {
+      if (!ctx || ctx.state !== 'running' || !frequency) return;
+      const when = Math.max(ctx.currentTime, perfMsToContextTime(atMs));
+      const length = Math.max(0.08, durationMs / 1000);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.0001, when);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.001, 0.1 * volume), when + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, when + length);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(when);
+      osc.stop(when + length + 0.02);
+    },
+
     // Guide tone at `frequency` Hz (null = silent). volume 0..1.
     setGuideTone(frequency, volume = 0.3) {
       if (!ctx || ctx.state !== 'running') return;

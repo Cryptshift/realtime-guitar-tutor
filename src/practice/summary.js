@@ -1,5 +1,6 @@
 // End-of-run summary: accuracy, timing tendency, the trickiest notes and bar, and a
 // suggested next step. Pure, so it is unit-tested.
+import { handOf, inHands, isTwoHanded } from '../piece.js';
 import { timingScoreForMs } from './session.js';
 
 export const STAR_THRESHOLDS = [0.5, 0.75, 0.9];
@@ -33,12 +34,29 @@ export function sectionsFor(piece, barsPerSection = 4) {
 
 const clampTempo = (value) => Math.max(50, Math.min(120, Math.round(value / 5) * 5));
 
+const percent = (value) => `${Math.round(value * 100)}%`;
+const HAND_WORDS = { R: 'right', L: 'left' };
+
 // results: array indexed by note index: { hit, timingMs, wrongAttempts, missed }.
-export function computeSummary({ piece, results, mode, tempoPercent = 100, describeNote = (n) => n.note }) {
-  const notes = (piece?.notes || []).filter((note) => note.playable !== false);
+// hands: 'R' | 'L' | 'both' (two-handed piano pieces): only those notes are scored, and with
+// both hands the accuracy is also given per hand.
+export function computeSummary({ piece, results, mode, tempoPercent = 100, describeNote = (n) => n.note, hands = 'both' }) {
+  const twoHanded = isTwoHanded(piece);
+  const practised = twoHanded ? hands : 'both';
+  const notes = (piece?.notes || []).filter((note) => note.playable !== false && inHands(note, practised));
   const resultFor = (note) => results?.[note.index] || {};
   const hits = notes.filter((note) => resultFor(note).hit);
   const accuracy = notes.length ? hits.length / notes.length : 0;
+
+  let byHand = null;
+  if (twoHanded && practised === 'both') {
+    byHand = {};
+    ['R', 'L'].forEach((hand) => {
+      const own = notes.filter((note) => handOf(note) === hand);
+      const ownHits = own.filter((note) => resultFor(note).hit).length;
+      byHand[hand] = { notes: own.length, hits: ownHits, accuracy: own.length ? ownHits / own.length : 0 };
+    });
+  }
 
   const offsets = hits.map((note) => resultFor(note).timingMs).filter(Number.isFinite);
   const timing = mode === 'play' && offsets.length
@@ -86,8 +104,20 @@ export function computeSummary({ piece, results, mode, tempoPercent = 100, descr
     }
     : null;
 
+  // Two hands: if one lags well behind, practise it alone first; one hand mastered: put
+  // them together.
+  const weaker = byHand ? (byHand.L.accuracy < byHand.R.accuracy ? 'L' : 'R') : null;
+  const stronger = weaker === 'L' ? 'R' : 'L';
   let suggestion;
-  if (accuracy >= 0.9 && tempoPercent < 120) {
+  if (byHand && byHand[weaker].accuracy < 0.9 && byHand[stronger].accuracy - byHand[weaker].accuracy >= 0.1) {
+    suggestion = {
+      text: `Your ${HAND_WORDS[weaker]} hand is behind (${percent(byHand[weaker].accuracy)}, against ${percent(byHand[stronger].accuracy)}). Practise the ${HAND_WORDS[weaker]} hand alone in "Wait for me", then play both hands again.`,
+      hands: weaker,
+      mode: 'wait',
+    };
+  } else if (twoHanded && practised !== 'both' && accuracy >= 0.9) {
+    suggestion = { text: `Your ${HAND_WORDS[practised]} hand has it. Now try both hands together.`, hands: 'both' };
+  } else if (accuracy >= 0.9 && tempoPercent < 120) {
     const next = clampTempo(tempoPercent + 10);
     suggestion = { text: `You are ready for more speed. Try it at ${next}% tempo.`, tempoPercent: next };
   } else if (accuracy >= 0.9 && mode === 'wait') {
@@ -106,6 +136,8 @@ export function computeSummary({ piece, results, mode, tempoPercent = 100, descr
     notes: notes.length,
     hits: hits.length,
     accuracy,
+    hands: practised,
+    byHand,
     stars: starsFor(accuracy),
     timing,
     meanOffsetMs,

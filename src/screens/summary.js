@@ -1,5 +1,6 @@
 // End-of-run summary: how it went, what was tricky, and one suggested next step.
 import { app } from '../app/context.js';
+import { HAND_NAMES } from '../piece.js';
 import { h, iconEl } from '../ui/dom.js';
 
 const percent = (value) => `${Math.round(value * 100)}%`;
@@ -20,12 +21,22 @@ export const summaryScreen = {
 
     const headline = summary.accuracy >= 0.9 ? 'Excellent' : summary.accuracy >= 0.75 ? 'Good run' : summary.accuracy >= 0.5 ? 'Getting there' : 'Keep practising';
     const hero = h('div', { class: 'score-hero' },
-      h('p', { class: 'muted' }, song.title, run.loop ? ' · loop' : ''),
+      h('p', { class: 'muted' }, song.title, run.loop ? ' · loop' : '', run.hands && run.hands !== 'both' ? ` · ${HAND_NAMES[run.hands].toLowerCase()} only` : ''),
       h('h1', {}, headline),
       stars,
       h('div', { class: 'big-number', 'aria-label': `${percent(summary.accuracy)} of notes correct` }, percent(summary.accuracy)),
       h('p', { class: 'muted' }, `${summary.hits} of ${summary.notes} notes correct`),
       run.isNewBest ? h('p', { class: 'badge' }, iconEl('star'), 'New personal best') : null);
+
+    // Both hands: accuracy per hand, the weaker one marked with a shape as well as words.
+    const byHand = summary.byHand;
+    const weaker = byHand && byHand.L.accuracy !== byHand.R.accuracy ? (byHand.L.accuracy < byHand.R.accuracy ? 'L' : 'R') : null;
+    const handStats = byHand
+      ? h('div', { class: 'stat-row hand-stats', role: 'group', 'aria-label': 'Accuracy per hand' }, ...['R', 'L'].map((hand) => h('div', { class: `stat${hand === weaker ? ' is-weaker' : ''}` },
+        h('span', { class: 'label' }, HAND_NAMES[hand]),
+        h('span', { class: 'value' }, percent(byHand[hand].accuracy)),
+        h('span', { class: 'muted' }, `${byHand[hand].hits} of ${byHand[hand].notes} notes`, hand === weaker ? ' · needs work' : ''))))
+      : null;
 
     const stats = h('div', { class: 'stat-row' },
       h('div', { class: 'stat' }, h('span', { class: 'label' }, 'Mode'), h('span', { class: 'value' }, run.mode === 'play' ? 'Play along' : 'Wait for me')),
@@ -48,7 +59,9 @@ export const summaryScreen = {
         class: 'btn btn-primary btn-lg',
         type: 'button',
         onclick: () => {
-          app.pendingPractice = { songId: song.id, loop: summary.trickyBar.loop, tempoPercent: summary.trickyBar.tempoPercent, mode: 'wait' };
+          app.pendingPractice = {
+            songId: song.id, loop: summary.trickyBar.loop, tempoPercent: summary.trickyBar.tempoPercent, mode: 'wait', hands: run.hands || null,
+          };
           app.go(`practice/${encodeURIComponent(song.id)}`);
         },
       }, iconEl('loop'), `Practice the tricky part (bar ${summary.trickyBar.bar}, ${summary.trickyBar.tempoPercent}%)`));
@@ -63,10 +76,11 @@ export const summaryScreen = {
           mode: suggestion.mode || run.mode,
           tempoPercent: suggestion.tempoPercent || run.tempoPercent,
           loop: suggestion.loop || null,
+          hands: suggestion.hands || run.hands || null,
         };
         app.go(`practice/${encodeURIComponent(song.id)}`);
       },
-    }, iconEl('play'), 'Next step'));
+    }, iconEl('play'), suggestion.hands && suggestion.hands !== 'both' ? `Practise the ${HAND_NAMES[suggestion.hands].toLowerCase()}` : 'Next step'));
     actions.append(h('a', { class: 'btn btn-lg', href: practiceHref }, iconEl('restart'), 'Play again'));
     actions.append(h('a', { class: 'btn btn-ghost btn-lg', href: '#/library' }, iconEl('library'), 'Library'));
 
@@ -75,6 +89,7 @@ export const summaryScreen = {
       h('section', { class: 'card', 'aria-label': 'Suggested next step' },
         h('h2', {}, 'Next step'),
         h('p', { style: { fontSize: '20px', marginTop: '8px' } }, suggestion.text)),
+      handStats,
       stats,
       tricky,
       actions));

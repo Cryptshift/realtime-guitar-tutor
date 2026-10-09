@@ -124,3 +124,41 @@ describe('per-song hands choice', () => {
     expect(entry.history[0]).toMatchObject({ accuracy: 1, hands: 'L' });
   });
 });
+
+describe('run summary with two hands', () => {
+  // Bar of right-hand quarter notes over left-hand half notes, four bars.
+  const twoHands = () => normalizePiece({
+    bpm: 60,
+    notes: [
+      ...Array.from({ length: 16 }, (_, i) => ({ note: ['E4', 'D4', 'C4', 'D4'][i % 4], start: i, duration: 1, hand: 'R' })),
+      ...Array.from({ length: 8 }, (_, i) => ({ note: i % 2 ? 'G3' : 'C3', start: i * 2, duration: 2, hand: 'L' })),
+    ],
+  }, getInstrument('piano'));
+
+  it('gives the accuracy per hand and suggests the weaker hand alone', () => {
+    const piece = twoHands();
+    const results = piece.notes.map((note) => ({ hit: note.hand === 'R' || note.start < 8, wrongAttempts: 0 }));
+    const summary = computeSummary({ piece, results, mode: 'wait', tempoPercent: 70, hands: 'both' });
+    expect(summary.byHand.R).toMatchObject({ notes: 16, hits: 16, accuracy: 1 });
+    expect(summary.byHand.L).toMatchObject({ notes: 8, hits: 4, accuracy: 0.5 });
+    expect(summary.accuracy).toBeCloseTo(20 / 24, 6);
+    expect(summary.suggestion).toMatchObject({ hands: 'L', mode: 'wait' });
+    expect(summary.suggestion.text).toBe('Your left hand is behind (50%, against 100%). Practise the left hand alone in "Wait for me", then play both hands again.');
+  });
+
+  it('scores only the practised hand, and then suggests both hands together', () => {
+    const piece = twoHands();
+    // Left-hand notes have no results at all when only the right hand was practised.
+    const results = piece.notes.map((note) => (note.hand === 'R' ? { hit: true } : { hit: false }));
+    const summary = computeSummary({ piece, results, mode: 'wait', tempoPercent: 70, hands: 'R' });
+    expect(summary).toMatchObject({ notes: 16, hits: 16, accuracy: 1, byHand: null, hands: 'R' });
+    expect(summary.suggestion).toMatchObject({ hands: 'both' });
+    expect(summary.suggestion.text).toBe('Your right hand has it. Now try both hands together.');
+  });
+
+  it('leaves one-handed pieces as before', () => {
+    const piece = fourBars();
+    const summary = computeSummary({ piece, results: piece.notes.map(() => ({ hit: true })), mode: 'wait', tempoPercent: 70, hands: 'L' });
+    expect(summary).toMatchObject({ notes: 16, byHand: null, hands: 'both' });
+  });
+});

@@ -16,6 +16,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   showKeyLabels: true,
   guideTone: false,
   guideToneVolume: 30,
+  // Two-handed pieces practised one hand at a time: play the other hand quietly.
+  otherHandSound: false,
   backingVolume: 80,
   metronome: false,
   countIn: true,
