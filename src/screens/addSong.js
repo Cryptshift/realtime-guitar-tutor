@@ -4,8 +4,9 @@ import { app } from '../app/context.js';
 import { fetchTabPage, guessPieceNameFromUrl } from '../import/fetch.js';
 import { startAudioToTab } from '../import/audioToTabJob.js';
 import { defaultMidiTrack, midiTrackToPiece, parseMidiFile } from '../import/midiFile.js';
+import { midiToHandsPiece, planHands } from '../import/midiHands.js';
 import { getInstrument, listInstruments } from '../instruments/index.js';
-import { parseCustomPieceInput } from '../piece.js';
+import { HAND_NAMES, parseCustomPieceInput } from '../piece.js';
 import { h, iconEl, setText } from '../ui/dom.js';
 
 const TABS = [
@@ -67,19 +68,31 @@ export function openAddSongDialog({ onAdded = () => {}, initialTab = 'link' } = 
   // --- MIDI file
   const midiInput = h('input', { type: 'file', accept: '.mid,.midi,audio/midi,audio/x-midi' });
   const trackSelect = h('select', { disabled: true }, h('option', {}, 'Choose a file first'));
+  const trackField = field('Track', trackSelect, 'Pick the melody; drum tracks are marked.');
   const quantizeSelect = h('select', {},
     h('option', { value: '' }, 'No quantising'),
     h('option', { value: '1/16', selected: true }, 'Snap to 1/16 notes'),
     h('option', { value: '1/8' }, 'Snap to 1/8 notes'),
     h('option', { value: '1/4' }, 'Snap to 1/4 notes'));
+  // Piano: every track (or, in a one-track file, every note) goes to a hand.
+  const handPlanBox = h('fieldset', { class: 'hand-plan', hidden: true });
+  const practiceSelect = h('select', {},
+    h('option', { value: 'both', selected: true }, HAND_NAMES.both),
+    h('option', { value: 'R' }, HAND_NAMES.R),
+    h('option', { value: 'L' }, HAND_NAMES.L));
+  const practiceField = field('Practice', practiceSelect, 'You can switch hands any time while practising.');
   let parsedMidi = null;
+  let handPlan = null;
   midiInput.addEventListener('change', async () => {
     const file = midiInput.files?.[0];
     parsedMidi = null;
+    handPlan = null;
     trackSelect.disabled = true;
+    renderMidiOptions();
     if (!file) return;
     try {
       parsedMidi = parseMidiFile(new Uint8Array(await file.arrayBuffer()));
+      handPlan = planHands(parsedMidi);
       const usable = parsedMidi.tracks.filter((track) => track.notes.length);
       trackSelect.replaceChildren(...usable.map((track) => h('option', {
         value: String(track.index),
@@ -88,13 +101,82 @@ export function openAddSongDialog({ onAdded = () => {}, initialTab = 'link' } = 
       trackSelect.disabled = !usable.length;
       if (!titleInput.value) titleInput.value = file.name.replace(/\.midi?$/i, '');
       setStatus(`${usable.length} track${usable.length === 1 ? '' : 's'} with notes · ${parsedMidi.bpm} BPM`);
+      renderMidiOptions();
     } catch (error) {
       setStatus(`That file could not be read: ${error.message}`, true);
     }
   });
+
+  const handOptions = (choices, selected) => choices.map(([value, label]) => h('option', { value, selected: value === selected }, label));
+
+  // Notes per hand under the current assignment.
+  function handTotals() {
+    const totals = { R: 0, L: 0 };
+    handPlan.tracks.forEach((track) => {
+      const choice = handPlan.assignments[track.index];
+      if (choice === 'R' || choice === 'L') totals[choice] += track.count;
+      if (choice === 'split') {
+        totals.R += handPlan.split.R;
+        totals.L += handPlan.split.L;
+      }
+    });
+    return totals;
+  }
+
+  function renderHandPlan() {
+    const totals = h('p', { class: 'hand-totals', role: 'status' });
+    const updateTotals = () => {
+      const { R, L } = handTotals();
+      const count = (n) => `${n} note${n === 1 ? '' : 's'}`;
+      totals.replaceChildren(h('span', {}, `Right hand: ${count(R)}`), h('span', {}, `Left hand: ${count(L)}`));
+      const both = R > 0 && L > 0;
+      practiceSelect.disabled = !both;
+      if (!both) practiceSelect.value = R > 0 ? 'R' : 'L';
+      else if (practiceSelect.dataset.chosen) practiceSelect.value = practiceSelect.dataset.chosen;
+      else practiceSelect.value = 'both';
+    };
+    const rows = handPlan.tracks.map((track) => {
+      const single = handPlan.kind === 'single' && handPlan.assignments[track.index] !== 'ignore';
+      const choices = single
+        ? [['split', 'Split by pitch'], ['R', 'All right hand'], ['L', 'All left hand']]
+        : [['R', HAND_NAMES.R], ['L', HAND_NAMES.L], ['ignore', 'Ignore']];
+      const select = h('select', {
+        'aria-label': `Hand for ${track.name}`,
+        onchange: (event) => {
+          handPlan.assignments[track.index] = event.target.value;
+          updateTotals();
+        },
+      }, ...handOptions(choices, handPlan.assignments[track.index]));
+      return h('li', { class: 'hand-track' },
+        h('span', { class: 'hand-track-name' }, track.name, track.isDrums ? h('span', { class: 'muted' }, ' (drums)') : null),
+        h('span', { class: 'hand-track-meta' }, `${track.count} notes · ${track.range}`),
+        select);
+    });
+    const hint = handPlan.kind === 'single'
+      ? `One track: the notes are split between the hands by pitch (${handPlan.split.R} right hand, ${handPlan.split.L} left hand).`
+      : 'The higher track starts as the right hand and the lower one as the left.';
+    handPlanBox.replaceChildren(
+      h('legend', {}, 'Hands'),
+      h('span', { class: 'field-hint' }, hint),
+      h('ul', { class: 'hand-tracks' }, ...rows),
+      totals);
+    updateTotals();
+  }
+
+  function renderMidiOptions() {
+    const isPiano = getInstrument(instrumentId).kind === 'keyboard';
+    trackField.hidden = isPiano;
+    practiceField.hidden = !isPiano;
+    handPlanBox.hidden = !isPiano || !handPlan;
+    if (isPiano && handPlan) renderHandPlan();
+  }
+  practiceSelect.addEventListener('change', () => { practiceSelect.dataset.chosen = practiceSelect.value; });
+
   panels.midi = [
     field('MIDI file (.mid)', midiInput),
-    field('Track', trackSelect, 'Pick the melody; drum tracks are marked.'),
+    trackField,
+    handPlanBox,
+    practiceField,
     field('Timing', quantizeSelect),
     h('button', { class: 'btn btn-primary', type: 'button', onclick: () => importMidi() }, iconEl('file'), 'Import MIDI'),
   ];
@@ -163,6 +245,7 @@ export function openAddSongDialog({ onAdded = () => {}, initialTab = 'link' } = 
   instrumentSelect.addEventListener('change', () => {
     instrumentId = instrumentSelect.value;
     updateInstrumentNotes();
+    renderMidiOptions();
   });
 
   function selectTab(id) {
@@ -192,13 +275,15 @@ export function openAddSongDialog({ onAdded = () => {}, initialTab = 'link' } = 
   });
   document.body.append(dialog);
   updateInstrumentNotes();
+  renderMidiOptions();
   dialog.showModal();
 
   // ---------- importers ----------
-  function finish(rawPiece, source, fallbackTitle) {
+  function finish(rawPiece, source, fallbackTitle, { hands = null } = {}) {
     const instrument = getInstrument(instrumentId);
     const title = titleInput.value.trim() || rawPiece.name || fallbackTitle || 'New song';
     const song = app.library.add({ title, instrument: instrument.id, piece: rawPiece, source });
+    if (hands) app.store.saveSongPrefs(song.id, { hands });
     const piece = app.library.piece(song);
     const unplayable = piece.notes.length - piece.playableCount;
     app.toast(`Added “${song.title}” (${piece.notes.length} notes${unplayable ? `, ${unplayable} out of range` : ''})`);
@@ -260,6 +345,15 @@ export function openAddSongDialog({ onAdded = () => {}, initialTab = 'link' } = 
   function importMidi() {
     return run(null, async () => {
       if (!parsedMidi) throw new Error('Choose a MIDI file first.');
+      if (getInstrument(instrumentId).kind === 'keyboard') {
+        const piece = midiToHandsPiece(parsedMidi, {
+          assignments: handPlan.assignments,
+          quantize: quantizeSelect.value || null,
+          instrument: instrumentId,
+        });
+        finish(piece, 'midi', 'MIDI import', { hands: practiceSelect.disabled ? null : practiceSelect.value });
+        return;
+      }
       const piece = midiTrackToPiece(parsedMidi, {
         trackIndex: Number(trackSelect.value),
         quantize: quantizeSelect.value || null,

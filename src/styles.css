@@ -383,6 +383,75 @@ label {
   font-weight: 400;
 }
 
+/* Piano MIDI import: which hand each track (or the split) goes to. */
+.hand-plan {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.hand-plan legend {
+  padding: 0 var(--space-1);
+  font-weight: 600;
+}
+
+.hand-tracks {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hand-track {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(132px, 190px);
+  grid-template-areas:
+    'name select'
+    'meta select';
+  align-items: center;
+  column-gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.hand-track:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.hand-track-name {
+  grid-area: name;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.hand-track-meta {
+  grid-area: meta;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.hand-track select {
+  grid-area: select;
+}
+
+.hand-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  margin: 0;
+  font-weight: 600;
+}
+
+.hand-totals > span {
+  white-space: nowrap;
+}
+
 input[type='text'],
 input[type='url'],
 input[type='number'],
