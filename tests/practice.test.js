@@ -92,3 +92,35 @@ describe('built-in songs', () => {
     expect(ode.slice(0, 4).map((n) => n.finger)).toEqual([3, 3, 4, 5]);
   });
 });
+
+describe('per-song hands choice', () => {
+  const memoryStorage = () => {
+    const data = new Map();
+    return { getItem: (k) => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, String(v)) };
+  };
+
+  it('remembers the hands choice per song and forgets it with the song', () => {
+    const store = createStore(memoryStorage());
+    expect(store.loadSongPrefs('piano-ode')).toEqual({});
+    store.saveSongPrefs('piano-ode', { hands: 'L' });
+    store.saveSongPrefs('user-1', { hands: 'R' });
+    expect(store.loadSongPrefs('piano-ode')).toEqual({ hands: 'L' });
+    expect(store.loadSongPrefs('user-1')).toEqual({ hands: 'R' });
+    store.saveSongPrefs('piano-ode', { hands: 'both' });
+    expect(store.loadSongPrefs('piano-ode').hands).toBe('both');
+
+    store.saveUserSong({ id: 'user-1', title: 'Mine' });
+    store.deleteUserSong('user-1');
+    expect(store.loadSongPrefs('user-1')).toEqual({});
+    expect(createStore(undefined).loadSongPrefs('x')).toEqual({});
+  });
+
+  it('keeps one-hand runs in the history without making them the best', () => {
+    const store = createStore(memoryStorage());
+    expect(store.recordRun('song', { accuracy: 0.7, hands: 'both' }).isNewBest).toBe(true);
+    expect(store.recordRun('song', { accuracy: 1, hands: 'L' }).isNewBest).toBe(false);
+    const entry = store.loadProgress().songs.song;
+    expect(entry.best.accuracy).toBe(0.7);
+    expect(entry.history[0]).toMatchObject({ accuracy: 1, hands: 'L' });
+  });
+});
