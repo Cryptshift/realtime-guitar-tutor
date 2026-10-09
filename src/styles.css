@@ -440,6 +440,17 @@ label {
   grid-area: select;
 }
 
+@media (max-width: 520px) {
+  .hand-track {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'name'
+      'meta'
+      'select';
+    row-gap: var(--space-1);
+  }
+}
+
 .hand-totals {
   display: flex;
   flex-wrap: wrap;
