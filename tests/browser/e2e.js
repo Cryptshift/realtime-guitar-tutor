@@ -5,8 +5,9 @@
 //   await e2e.onboarding();           // first run: instrument, mic, level check, finish
 //   await e2e.guitarRun();            // Mary Had a Little Lamb, Wait for me, fake mic
 //   await e2e.guitarPlayAlong();      // Twinkle, Play along at 100 %, fake mic
-//   await e2e.pianoRun();             // Ode to Joy, Wait for me, mock MIDI, one wrong note
-//   await e2e.pianoPlayAlong();       // Twinkle (piano), Play along, mock MIDI
+//   await e2e.pianoRun();             // Ode to Joy, right hand only, Wait for me, mock MIDI, one wrong note
+//   await e2e.pianoPlayAlong();       // Twinkle (piano, both hands), Play along, mock MIDI
+//   await e2e.pianoBothHands();       // Ode to Joy, both hands, Wait for me, mock MIDI, one wrong left-hand note
 //
 // Each returns what the page showed. In a hidden tab pass { rafShim: true }: hidden tabs
 // pause requestAnimationFrame, which the practice screen renders with.
@@ -113,6 +114,19 @@ function songNotes(id) {
   return app().library.get(id).piece.notes;
 }
 
+// The song's notes as Wait-for-me steps: notes that start together (in either hand).
+function songSteps(id, hands = 'both') {
+  const notes = app().library.piece(app().library.get(id)).notes
+    .filter((note) => hands === 'both' || (note.hand === 'L' ? 'L' : 'R') === hands);
+  const steps = [];
+  notes.forEach((note) => {
+    const last = steps.at(-1);
+    if (last && Math.abs(last[0].start - note.start) <= 0.035) last.push(note);
+    else steps.push([note]);
+  });
+  return steps;
+}
+
 async function finishAndReadSummary(timeout = 40000) {
   await waitFor(() => location.hash === '#/summary', { timeout });
   await waitFor(() => $('.big-number'));
@@ -123,6 +137,7 @@ async function finishAndReadSummary(timeout = 40000) {
     stats: [...document.querySelectorAll('.stat')].map((s) => s.textContent.replace(/\s+/g, ' ').trim()),
     next: text('[aria-label="Suggested next step"] p'),
     tricky: [...document.querySelectorAll('.tricky-list li')].map((li) => li.textContent.trim()),
+    perHand: [...document.querySelectorAll('.hand-stats .stat')].map((s) => s.textContent.replace(/\s+/g, ' ').trim()),
     actions: [...document.querySelectorAll('.summary-actions .btn')].map((b) => b.textContent.trim()),
   };
 }
@@ -204,12 +219,14 @@ export async function pianoRun({ rafShim = false, songId = 'piano-ode' } = {}) {
   installMockMidi();
   resetApp({ instrument: 'piano', inputSource: 'midi' });
   app().store.setLastPlayed(null);
+  // Ode to Joy has both hands: this flow practises the right hand alone.
+  app().store.saveSongPrefs(songId, { hands: 'R' });
   await openSong(songId);
   const result = {
     input: text('.input-status'),
     start: { note: text('.now-note'), position: text('.now-position'), keyboard: $('.view-canvas svg')?.getAttribute('aria-label') },
   };
-  const notes = songNotes(songId);
+  const notes = songNotes(songId).filter((note) => note.hand !== 'L');
   for (let i = 0; i < notes.length; i += 1) {
     if (i === 3) {
       // A wrong key first: expect a plain-language hint and a slip on that note.
@@ -223,6 +240,47 @@ export async function pianoRun({ rafShim = false, songId = 'piano-ode' } = {}) {
     if (i === 4) result.midRun = { note: text('.now-note'), feedback: text('.feedback'), streak: text('.streak') };
   }
   result.summary = await finishAndReadSummary();
+  return result;
+}
+
+// Both hands in Wait for me: chord steps across the hands, one wrong left-hand key (a whole
+// tone too high) on the first step where the left hand moves to G, then the right one.
+export async function pianoBothHands({ rafShim = false, songId = 'piano-ode' } = {}) {
+  if (rafShim) shimAnimationFrames();
+  installMockMidi();
+  resetApp({ instrument: 'piano', inputSource: 'midi' });
+  app().store.setLastPlayed(null);
+  app().store.saveSongPrefs(songId, { hands: 'both' });
+  await openSong(songId);
+  const result = {
+    hands: [...document.querySelectorAll('.hands-control [role="radio"]')].map((b) => `${b.textContent}${b.getAttribute('aria-checked') === 'true' ? ' (selected)' : ''}`),
+    start: { label: text('.now-label'), note: text('.now-note'), position: text('.now-position'), hint: text('.start-hint') },
+  };
+  const steps = songSteps(songId);
+  const slipAt = steps.findIndex((step) => step.some((note) => note.hand === 'L' && note.note === 'G3'));
+  for (let i = 0; i < steps.length; i += 1) {
+    const step = steps[i];
+    if (i === slipAt) {
+      const right = step.filter((note) => note.hand !== 'L');
+      const left = step.find((note) => note.hand === 'L');
+      right.forEach((note) => pressKey(note.note, 600));
+      await sleep(150);
+      result.chord = { label: text('.now-label'), note: text('.now-note'), position: text('.now-position'), keyboard: $('.view-canvas svg')?.getAttribute('aria-label') };
+      pressKey(noteToMidi(left.note) + 2, 120);
+      await sleep(200);
+      result.wrongHint = text('.feedback');
+      result.expectedHint = `Left hand: you played ${['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][(noteToMidi(left.note) + 2) % 12]}${Math.floor((noteToMidi(left.note) + 2) / 12) - 1}, aim for ${left.note}: two keys to the left`;
+      result.badges = [...document.querySelectorAll('.view-canvas .pk-finger')].map((t) => t.textContent);
+      await sleep(100);
+      pressKey(left.note, 120);
+      await sleep(180);
+      continue;
+    }
+    step.forEach((note) => pressKey(note.note, 120));
+    await sleep(180);
+  }
+  result.summary = await finishAndReadSummary();
+  result.ok = result.wrongHint === result.expectedHint && result.summary.accuracy === '100%' && result.summary.perHand.length === 2;
   return result;
 }
 
