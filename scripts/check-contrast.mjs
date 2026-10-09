@@ -68,6 +68,11 @@ const PAIRS = [
   ['accent', 'ivory', UI, 'active white key'],
   ['accent', 'ebony', UI, 'active black key'],
   ['ink', 'ivory', UI, 'next-key outline'],
+  ['bone', 'ebony', UI, 'next-key outline on a black key; left-hand hatching on a black key'],
+  ['ink', 'ivory', UI, 'left-hand hatching and outline on a white key'],
+  ['ivory', 'ink', TEXT, 'left-hand badge ("L5") on its ink disc'],
+  ['bone', 'ebony', TEXT, 'left-hand badge on a black key'],
+  ['surface', 'text', TEXT, 'key name on the current left-hand note on the highway'],
 ];
 
 let failures = 0;

@@ -1367,6 +1367,77 @@ dialog::backdrop {
   font-size: 18px;
 }
 
+.keyboard .pk-next-black {
+  stroke: var(--bone);
+}
+
+/* Left hand: pencil hatching and a heavy outline instead of the accent fill, so the hands
+   differ by more than colour. */
+.keyboard .pk-hatch-ink {
+  stroke: var(--ink);
+  stroke-width: 4;
+}
+
+.keyboard .pk-hatch-bone {
+  stroke: var(--bone);
+  stroke-width: 3.5;
+}
+
+.keyboard .pk-left {
+  fill: url(#pk-hatch-ink);
+  opacity: 0.6;
+}
+
+.keyboard .pk-left-outline {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 6;
+}
+
+.keyboard .pk-left-black {
+  fill: url(#pk-hatch-bone);
+  stroke: var(--bone);
+  stroke-width: 4;
+}
+
+.keyboard .pk-label-left {
+  fill: var(--ink);
+  font-weight: 800;
+  opacity: 1;
+}
+
+.keyboard .pk-label-black-left {
+  fill: var(--bone);
+  font-weight: 800;
+  opacity: 1;
+}
+
+.keyboard .pk-badge-left {
+  fill: var(--ink);
+}
+
+.keyboard .pk-finger-left {
+  fill: var(--ivory);
+}
+
+.keyboard .pk-finger-black-left {
+  fill: var(--bone);
+}
+
+.keyboard .pk-next-left {
+  stroke-dasharray: 1 10;
+  stroke-linecap: round;
+  stroke-width: 6;
+}
+
+/* Gap between the left-hand and right-hand sections of a wide piece. */
+.keyboard .pk-break {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
 /* ---------- Summary ---------- */
 
 .summary {

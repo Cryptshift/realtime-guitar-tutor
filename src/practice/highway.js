@@ -1,6 +1,8 @@
 // Note highway: upcoming notes scroll from the right toward a hit line. One lane per
 // string (fretted, in tab order) or per pitch (piano); blocks show the fret number or key.
 // Hits get a check mark, misses a cross and a hollow outline: never colour alone.
+// Two-handed pieces: left-hand blocks are hatched (and the current one is ink, not the
+// accent); the hand that isn't being practised is drawn faintly, outline only.
 
 function cssVar(name, element = document.documentElement) {
   return getComputedStyle(element).getPropertyValue(name).trim();
@@ -62,6 +64,22 @@ export function createHighway(canvas, { piece, instrument }) {
     ctx.lineTo(cx - size * 0.12, cy + size * 0.38);
     ctx.lineTo(cx + size * 0.55, cy - size * 0.42);
     ctx.stroke();
+  }
+
+  // Diagonal pencil hatching inside the current path (a note block).
+  function hatch(x, y, w, h, color, alpha) {
+    ctx.save();
+    ctx.clip();
+    ctx.strokeStyle = color;
+    ctx.globalAlpha *= alpha;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = -h; i < w; i += 7) {
+      ctx.moveTo(x + i, y + h);
+      ctx.lineTo(x + i + h, y);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawCross(cx, cy, size) {
@@ -153,6 +171,8 @@ export function createHighway(canvas, { piece, instrument }) {
       const currentIndexes = new Set(view.current.map((note) => note.index));
       const pad = Math.max(3, laneHeight * 0.12);
       const fontSize = Math.min(24, Math.max(13, laneHeight * 0.55));
+      const isActive = view.isActive || (() => true);
+      const twoHanded = Boolean(view.twoHanded);
       piece.notes.forEach((note) => {
         if (note.playable === false) return;
         const lane = layout.laneOf(note);
@@ -162,9 +182,30 @@ export function createHighway(canvas, { piece, instrument }) {
         if (x1 < labelWidth || x0 > width) return;
         const y = top + lane * laneHeight + pad;
         const h = laneHeight - pad * 2;
+        const left = twoHanded && note.hand === 'L';
+        const bx = Math.max(labelWidth, x0);
+        const bw = x1 - bx;
+        roundRect(bx, y, bw, h, 4);
+
+        // The hand that isn't being practised: faint outline, not scored.
+        if (!isActive(note)) {
+          ctx.globalAlpha = 0.32;
+          ctx.strokeStyle = colors.text;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          if (left) hatch(bx, y, bw, h, colors.text, 0.8);
+          const labelX = Math.max(labelWidth + fontSize, x0 + fontSize * 0.9);
+          if (labelX < x1) {
+            ctx.fillStyle = colors.text;
+            ctx.font = `600 ${fontSize}px ${colors.font}`;
+            ctx.fillText(layout.labelOf(note), labelX, y + h / 2 + 1);
+          }
+          ctx.globalAlpha = 1;
+          return;
+        }
+
         const result = view.results[note.index] || {};
         const isCurrent = currentIndexes.has(note.index) && !result.hit;
-        roundRect(Math.max(labelWidth, x0), y, x1 - Math.max(labelWidth, x0), h, 4);
         let labelColor = colors.text;
         if (result.hit) {
           ctx.fillStyle = colors.hit;
@@ -177,6 +218,14 @@ export function createHighway(canvas, { piece, instrument }) {
           ctx.stroke();
           ctx.setLineDash([]);
           labelColor = colors.miss;
+        } else if (isCurrent && left) {
+          // Current left-hand note: ink (or cream) block with an accent edge.
+          ctx.fillStyle = colors.text;
+          ctx.fill();
+          ctx.strokeStyle = colors.accent;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          labelColor = colors.lane;
         } else if (isCurrent) {
           ctx.fillStyle = colors.accent;
           ctx.fill();
@@ -185,9 +234,13 @@ export function createHighway(canvas, { piece, instrument }) {
           ctx.stroke();
           labelColor = colors.onAccent;
         } else {
-          // Upcoming: ink (or cream) outline on the paper.
+          // Upcoming: ink (or cream) outline on the paper; hatched for the left hand.
           ctx.fillStyle = colors.lane;
           ctx.fill();
+          if (left) {
+            hatch(bx, y, bw, h, colors.text, 0.35);
+            roundRect(bx, y, bw, h, 4);
+          }
           ctx.strokeStyle = colors.text;
           ctx.lineWidth = 2;
           ctx.stroke();
