@@ -159,7 +159,7 @@ A large needle with "Too high: loosen the string" / "Too low: tighten the string
 
 Import only MIDI files you have the rights to use (your own arrangements, public-domain music, or files whose licence allows it). The app ships no copyrighted music. Imported songs stay in your browser only: they are saved in its local storage and never uploaded.
 
-**Your own folder (local runs only).** Drop `.mid` or `.midi` files into `my-songs/` and run `npm run dev`. Each file shows up in the library under **My songs**, tagged **Local file**, as a piano piece with both hands assigned automatically. The title comes from the file name (`wet-hands.mid` becomes "Wet Hands"), and scores are kept like any other song's.
+**Your own folder (local runs only).** Drop `.mid` or `.midi` files into `my-songs/` and run `npm run dev`. Each file shows up in the library under **My songs**, tagged **Local file**, as a piano piece with both hands assigned automatically. The title comes from the file name (`moonlight-sonata.mid` becomes "Moonlight Sonata"), and scores are kept like any other song's.
 
 - `my-songs/` is git-ignored (except its README), so the files are never committed. The GitHub Pages build starts from a fresh checkout and never includes them.
 - A local `npm run build` **does** bundle them into `dist/`. Don't publish a build made with files in `my-songs/`.

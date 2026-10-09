@@ -8,13 +8,13 @@
 import { parseMidiFile } from '../import/midiFile.js';
 import { midiToHandsPiece, planHands } from '../import/midiHands.js';
 
-// Lazy URL loaders, keyed by path ('/my-songs/wet-hands.mid'). A missing or empty folder
+// Lazy URL loaders, keyed by path ('/my-songs/moonlight-sonata.mid'). A missing or empty folder
 // gives an empty object.
 const FILES = import.meta.glob('/my-songs/*.{mid,midi,MID,MIDI}', { query: '?url', import: 'default' });
 
 const fileName = (path) => path.split('/').pop();
 
-// "wet-hands.mid" -> "Wet Hands".
+// "moonlight-sonata.mid" -> "Moonlight Sonata".
 export function titleFromFileName(path) {
   const words = fileName(path).replace(/\.midi?$/i, '').split(/[-_\s.]+/).filter(Boolean);
   return words.map((word) => word[0].toUpperCase() + word.slice(1)).join(' ') || 'Untitled';

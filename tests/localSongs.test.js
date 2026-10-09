@@ -26,9 +26,9 @@ const fakeFetch = (bodies) => vi.fn(async (url) => {
 
 describe('my-songs folder', () => {
   it('titles songs from their file names', () => {
-    expect(titleFromFileName('/my-songs/wet-hands.mid')).toBe('Wet Hands');
+    expect(titleFromFileName('/my-songs/moonlight-sonata.mid')).toBe('Moonlight Sonata');
     expect(titleFromFileName('/my-songs/my_song two.MIDI')).toBe('My Song Two');
-    expect(localSongId('/my-songs/Wet Hands!.mid')).toBe('local-wet-hands');
+    expect(localSongId('/my-songs/Moonlight Sonata!.mid')).toBe('local-moonlight-sonata');
   });
 
   it('turns each file into a two-handed piano song in "My songs"', async () => {
