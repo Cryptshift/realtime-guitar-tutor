@@ -81,6 +81,20 @@ describe('practice session with hands: Wait for me', () => {
     expect(session.status).toBe('finished');
   });
 
+  it('keeps the hint about the wrong key after it is let go, while the right hand still holds its key', () => {
+    const session = createPracticeSession({ piece: twoHands(), instrument: piano, mode: 'wait', hands: 'both' });
+    session.start(0);
+    ['C4', 'C3', 'D4'].forEach((name, i) => press(session, name, 10 + i * 10));
+    press(session, 'E4', 100);
+    press(session, 'C3', 150);
+    release(session, 'C3', 270);
+    session.tick(300);
+    expect(session.view(300).feedback.text).toBe('Left hand: you played C3, aim for A2: three keys to the left');
+    const a2 = session.view(300).current.find((n) => n.note === 'A2');
+    expect(session.results[a2.index].wrongAttempts).toBe(1);
+    expect(session.results.filter((r) => r.wrongAttempts).length).toBe(1);
+  });
+
   it('requires only the right hand when Right is selected, and ignores the left hand', () => {
     const session = createPracticeSession({ piece: twoHands(), instrument: piano, mode: 'wait', hands: 'R' });
     session.start(0);

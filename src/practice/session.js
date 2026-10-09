@@ -170,6 +170,10 @@ export function createPracticeSession({
 
   const latestOnset = () => s.onsets[s.onsets.length - 1] || null;
 
+  // MIDI: only the key that made the latest attack is judged. (After a wrong key is let go,
+  // the heard pitch falls back to a key still held from before, which was already judged.)
+  const isLatestKey = (onset) => !s.heard?.exact || !onset || s.heard.since === onset.timeMs;
+
   // The press of a held MIDI key, if it falls within the note's onset window.
   function keyOnsetFor(note) {
     const pressedMs = s.held.get(note.midi);
@@ -301,7 +305,7 @@ export function createPracticeSession({
     // Wrong pitch after a fresh attack: count it once, and say how to fix it. (A note still
     // ringing from the previous step is not an attempt, so it gets no hint; neither is a
     // chord note that was just played correctly while the rest of the chord is still due.)
-    if (!fresh || onset?.hit) return;
+    if (!fresh || onset?.hit || !isLatestKey(onset)) return;
     const stable = s.heard.exact || nowMs - Math.max(s.heard.since, onset ? onset.timeMs : -Infinity) >= WRONG_NOTE_STABLE_MS;
     if (!stable) return;
     if (isOtherHandNote(s.heard.midi, s.lastStepStart, group[0].start)) return;
@@ -362,7 +366,7 @@ export function createPracticeSession({
     // already scored (one key of a chord) is not a wrong attempt at the rest of the chord.
     const onset = latestOnset();
     const due = candidates.filter((note) => !s.results[note.index].hit);
-    if (s.heard && onset && onset.consumedStart === null && due.length && !due.some((note) => matches(note) || s.held.has(note.midi))) {
+    if (s.heard && onset && onset.consumedStart === null && isLatestKey(onset) && due.length && !due.some((note) => matches(note) || s.held.has(note.midi))) {
       // Judge the pitch that follows the attack, not the previous note still in the window.
       const stable = s.heard.exact || nowMs - Math.max(s.heard.since, onset.timeMs) >= WRONG_NOTE_STABLE_MS;
       const aim = nearestTo(due);
