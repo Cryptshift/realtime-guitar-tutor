@@ -5,6 +5,7 @@ import '@fontsource/fraunces/latin-700.css';
 import '@fontsource/ibm-plex-mono/latin-500.css';
 import '@fontsource/ibm-plex-mono/latin-600.css';
 import { app } from './app/context.js';
+import { loadLocalSongs } from './app/localSongs.js';
 import { createRouter } from './app/router.js';
 import { h, iconEl } from './ui/dom.js';
 import { libraryScreen } from './screens/library.js';
@@ -86,7 +87,11 @@ app.router = createRouter({
     return null;
   },
 });
-app.router.start();
+// MIDI files from my-songs/ (if any) join the library before the first screen.
+loadLocalSongs()
+  .then((songs) => app.library.setLocalSongs(songs))
+  .catch(() => {})
+  .finally(() => app.router.start());
 
 // Unlock audio output (clicks, guide tone) on the first interaction anywhere.
 window.addEventListener('pointerdown', () => app.engine.ensureContext(), { once: true });

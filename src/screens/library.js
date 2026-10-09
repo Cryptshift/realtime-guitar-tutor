@@ -100,12 +100,13 @@ export const libraryScreen = {
           h('p', { class: 'song-meta' },
             h('span', { class: 'badge' }, iconEl(INSTRUMENT_ICONS[instrument.id]), instrument.name),
             instrument.kind === 'keyboard' && isTwoHanded(piece) ? h('span', { class: 'badge' }, 'Both hands') : null,
+            song.local ? h('span', { class: 'badge', title: `my-songs/${song.file}: stays on this computer` }, iconEl('file'), 'Local file') : null,
             h('span', {}, DIFFICULTY_LABELS[song.difficulty] || 'My song'),
             h('span', {}, formatDuration(piece.totalDuration))),
           h('p', { class: 'song-meta' },
             starsEl(stars, best ? `Best: ${stars} of 3 stars, ${Math.round(best.accuracy * 100)}%` : 'Not played yet'),
             h('span', {}, best ? `Best ${Math.round(best.accuracy * 100)}%` : 'New')));
-        if (!song.builtIn) {
+        if (!song.builtIn && !song.local) {
           card.append(h('div', { class: 'card-actions' }, h('button', {
             class: 'btn btn-ghost btn-danger',
             type: 'button',

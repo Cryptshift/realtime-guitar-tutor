@@ -1,12 +1,14 @@
-// The song library: built-in songs plus songs the learner added (stored locally).
+// The song library: built-in songs, songs the learner added (stored locally) and MIDI files
+// from the private my-songs/ folder (local runs only, see localSongs.js).
 import { getInstrument } from '../instruments/index.js';
 import { normalizePiece, toPieceSnapshot } from '../piece.js';
 import { BUILT_IN_SONGS } from '../songs/catalog.js';
 
 export function createLibrary(store) {
   const cache = new Map();
+  let localSongs = [];
 
-  const all = () => [...store.loadUserSongs(), ...BUILT_IN_SONGS];
+  const all = () => [...store.loadUserSongs(), ...localSongs, ...BUILT_IN_SONGS];
 
   return {
     all,
@@ -35,6 +37,9 @@ export function createLibrary(store) {
     },
     remove(id) {
       store.deleteUserSong(id);
+    },
+    setLocalSongs(songs) {
+      localSongs = Array.isArray(songs) ? songs : [];
     },
   };
 }
