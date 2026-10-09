@@ -2,6 +2,7 @@
 // or add one (one dialog for every import path).
 import { app } from '../app/context.js';
 import { getInstrument, listInstruments } from '../instruments/index.js';
+import { HAND_NAMES, isTwoHanded } from '../piece.js';
 import { DIFFICULTY_LABELS } from '../songs/catalog.js';
 import { formatDuration, h, iconEl } from '../ui/dom.js';
 import { INSTRUMENT_ICONS } from '../ui/icons.js';
@@ -67,7 +68,12 @@ export const libraryScreen = {
           h('p', { class: 'muted' }, 'Continue where you left off'),
           h('h2', {}, song.title),
           h('p', { class: 'song-meta' }, iconEl(INSTRUMENT_ICONS[instrument.id]),
-            h('span', {}, [instrument.name, MODE_LABELS[last.mode] || 'Wait for me', `${last.tempoPercent || 70}% tempo`].join(' · ')))),
+            h('span', {}, [
+              instrument.name,
+              MODE_LABELS[last.mode] || 'Wait for me',
+              `${last.tempoPercent || 70}% tempo`,
+              ...(last.hands ? [HAND_NAMES[last.hands] || ''] : []),
+            ].filter(Boolean).join(' · ')))),
         h('a', { class: 'btn btn-primary btn-lg', href: `#/practice/${encodeURIComponent(song.id)}` }, iconEl('play'), 'Resume')));
     }
 
@@ -93,6 +99,7 @@ export const libraryScreen = {
           h('h3', { id: titleId }, h('a', { href: `#/practice/${encodeURIComponent(song.id)}` }, song.title)),
           h('p', { class: 'song-meta' },
             h('span', { class: 'badge' }, iconEl(INSTRUMENT_ICONS[instrument.id]), instrument.name),
+            instrument.kind === 'keyboard' && isTwoHanded(piece) ? h('span', { class: 'badge' }, 'Both hands') : null,
             h('span', {}, DIFFICULTY_LABELS[song.difficulty] || 'My song'),
             h('span', {}, formatDuration(piece.totalDuration))),
           h('p', { class: 'song-meta' },

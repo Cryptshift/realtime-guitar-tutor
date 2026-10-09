@@ -1,10 +1,13 @@
 // Built-in practice songs. Melodies are traditional or public domain (Twinkle Twinkle,
-// Mary Had a Little Lamb, Ode to Joy, Für Elise and the Minuet in G opening phrases); the
-// piano versions are right hand only. Finger numbers are given only where the fingering is
-// the standard one (five-finger C position, and the usual Für Elise / Minuet openings).
+// Mary Had a Little Lamb, Ode to Joy, Für Elise and the Minuet in G opening phrases). The
+// piano Twinkle and Ode to Joy have a simple left hand written for this app (root notes on
+// beats 1 and 3, in five-finger C position); the other piano pieces are right hand only.
+// Finger numbers are given only where the fingering is the standard one (five-finger C
+// position, and the usual Für Elise / Minuet openings).
 
-// Builds a raw piece from [noteName | null (rest), beats, finger?] in sequence.
-function sequence(steps, bpm) {
+// Builds a raw piece from [noteName | null (rest), beats, finger?] in sequence. With `hand`,
+// every note gets that hand; otherwise fingered notes are right hand.
+function sequence(steps, bpm, hand = null) {
   const secondsPerBeat = 60 / bpm;
   let beat = 0;
   const notes = [];
@@ -19,6 +22,7 @@ function sequence(steps, bpm) {
         entry.finger = finger;
         entry.hand = 'R';
       }
+      if (hand) entry.hand = hand;
       notes.push(entry);
     }
     beat += beats;
@@ -26,7 +30,7 @@ function sequence(steps, bpm) {
   return notes;
 }
 
-function song({ id, title, instrument, difficulty, bpm, beatsPerBar = 4, steps, transpose = 0 }) {
+function song({ id, title, instrument, difficulty, bpm, beatsPerBar = 4, steps, leftHand = null, transpose = 0 }) {
   const shift = (name) => {
     if (!transpose || !name) return name;
     const match = name.match(/^([A-G][#b]?)(-?\d)$/);
@@ -43,7 +47,10 @@ function song({ id, title, instrument, difficulty, bpm, beatsPerBar = 4, steps, 
       bpm,
       beatsPerBar,
       instrument,
-      notes: sequence(steps.map(([note, beats, finger]) => [shift(note), beats, finger]), bpm),
+      notes: [
+        ...sequence(steps.map(([note, beats, finger]) => [shift(note), beats, finger]), bpm, leftHand ? 'R' : null),
+        ...(leftHand ? sequence(leftHand, bpm, 'L') : []),
+      ],
     },
   };
 }
@@ -65,11 +72,24 @@ const MARY = [
   ['D4', 1], ['D4', 1], ['E4', 1], ['D4', 1], ['C4', 4],
 ];
 
+// Left hand for the piano version (written for this app): five-finger C position, C3 = 5,
+// F3 = 2, G3 = 1; the chord root on beats 1 and 3 (I, IV, I, IV, I, V, I).
+const TWINKLE_LEFT = [
+  ['C3', 2, 5], ['C3', 2, 5], ['F3', 2, 2], ['C3', 2, 5],
+  ['F3', 2, 2], ['C3', 2, 5], ['G3', 2, 1], ['C3', 2, 5],
+];
+
 const ODE_TO_JOY = [
   ['E4', 1], ['E4', 1], ['F4', 1], ['G4', 1], ['G4', 1], ['F4', 1], ['E4', 1], ['D4', 1],
   ['C4', 1], ['C4', 1], ['D4', 1], ['E4', 1], ['E4', 1.5], ['D4', 0.5], ['D4', 2],
   ['E4', 1], ['E4', 1], ['F4', 1], ['G4', 1], ['G4', 1], ['F4', 1], ['E4', 1], ['D4', 1],
   ['C4', 1], ['C4', 1], ['D4', 1], ['E4', 1], ['D4', 1.5], ['C4', 0.5], ['C4', 2],
+];
+
+// Left hand for the piano version (written for this app): C and G roots on beats 1 and 3.
+const ODE_TO_JOY_LEFT = [
+  ['C3', 2, 5], ['C3', 2, 5], ['G3', 2, 1], ['G3', 2, 1], ['C3', 2, 5], ['C3', 2, 5], ['G3', 2, 1], ['G3', 2, 1],
+  ['C3', 2, 5], ['C3', 2, 5], ['G3', 2, 1], ['G3', 2, 1], ['C3', 2, 5], ['C3', 2, 5], ['G3', 2, 1], ['C3', 2, 5],
 ];
 
 // Für Elise opening (sixteenths = 0.5 beat at this tempo); fingers on the first phrase.
@@ -140,10 +160,10 @@ export const BUILT_IN_SONGS = [
   song({ id: 'ukulele-twinkle', title: 'Twinkle Twinkle Little Star', instrument: 'ukulele', difficulty: 'beginner', bpm: 90, steps: TWINKLE }),
   song({ id: 'ukulele-mary', title: 'Mary Had a Little Lamb', instrument: 'ukulele', difficulty: 'beginner', bpm: 90, steps: MARY }),
 
-  // Piano (right hand)
-  song({ id: 'piano-twinkle', title: 'Twinkle Twinkle Little Star', instrument: 'piano', difficulty: 'beginner', bpm: 90, steps: TWINKLE }),
+  // Piano (Twinkle and Ode to Joy with both hands, one level up; the rest right hand)
+  song({ id: 'piano-twinkle', title: 'Twinkle Twinkle Little Star', instrument: 'piano', difficulty: 'easy', bpm: 90, steps: TWINKLE, leftHand: TWINKLE_LEFT }),
   song({ id: 'piano-mary', title: 'Mary Had a Little Lamb', instrument: 'piano', difficulty: 'beginner', bpm: 90, steps: fingered(MARY) }),
-  song({ id: 'piano-ode', title: 'Ode to Joy', instrument: 'piano', difficulty: 'beginner', bpm: 100, steps: fingered(ODE_TO_JOY) }),
+  song({ id: 'piano-ode', title: 'Ode to Joy', instrument: 'piano', difficulty: 'easy', bpm: 100, steps: fingered(ODE_TO_JOY), leftHand: ODE_TO_JOY_LEFT }),
   song({ id: 'piano-fur-elise', title: 'Für Elise (opening)', instrument: 'piano', difficulty: 'intermediate', bpm: 70, beatsPerBar: 1.5, steps: FUR_ELISE }),
   song({ id: 'piano-minuet-g', title: 'Minuet in G (opening)', instrument: 'piano', difficulty: 'easy', bpm: 100, beatsPerBar: 3, steps: MINUET_IN_G }),
 ];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getInstrument } from '../src/instruments/index.js';
-import { normalizePiece } from '../src/piece.js';
+import { isTwoHanded, normalizePiece } from '../src/piece.js';
 import { computeSummary, sectionsFor, starsFor } from '../src/practice/summary.js';
 import { BUILT_IN_SONGS } from '../src/songs/catalog.js';
 import { DEFAULT_SETTINGS, createStore } from '../src/storage.js';
@@ -160,5 +160,25 @@ describe('run summary with two hands', () => {
     const piece = fourBars();
     const summary = computeSummary({ piece, results: piece.notes.map(() => ({ hit: true })), mode: 'wait', tempoPercent: 70, hands: 'L' });
     expect(summary).toMatchObject({ notes: 16, byHand: null, hands: 'both' });
+  });
+});
+
+describe('built-in two-handed songs', () => {
+  it('give Twinkle and Ode to Joy (piano) a left hand, one level up', () => {
+    for (const id of ['piano-twinkle', 'piano-ode']) {
+      const song = BUILT_IN_SONGS.find((s) => s.id === id);
+      const piece = normalizePiece(song.piece, getInstrument('piano'));
+      expect(isTwoHanded(piece), id).toBe(true);
+      expect(song.difficulty, id).toBe('easy');
+      const left = piece.notes.filter((n) => n.hand === 'L');
+      // Root notes in five-finger C position, on beats 1 and 3, as long as the right hand.
+      expect(left.every((n) => ['C3', 'F3', 'G3'].includes(n.note) && [5, 2, 1].includes(n.finger)), id).toBe(true);
+      const beat = (n) => (n.start * song.piece.bpm) / 60;
+      expect(left.every((n) => Math.abs(beat(n) - 2 * Math.round(beat(n) / 2)) < 1e-3), id).toBe(true);
+      const right = piece.notes.filter((n) => n.hand === 'R');
+      expect(right.length, id).toBeGreaterThan(left.length);
+      expect(Math.max(...left.map((n) => n.end))).toBeCloseTo(Math.max(...right.map((n) => n.end)), 1);
+    }
+    expect(isTwoHanded(normalizePiece(BUILT_IN_SONGS.find((s) => s.id === 'piano-mary').piece, getInstrument('piano')))).toBe(false);
   });
 });
