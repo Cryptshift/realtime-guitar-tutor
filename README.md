@@ -6,6 +6,8 @@ Learn songs on **guitar, bass, ukulele or piano**. The app listens through your 
 
 Everything runs in the browser (Vite + vanilla JS, no backend). The one exception is **tab-link import**, which goes through third-party CORS proxies (see [Adding songs](#adding-songs)).
 
+On piano you can practise **two-handed pieces**, one hand at a time or both together; see [Piano and two hands](#piano-and-two-hands).
+
 ## Quick start
 
 ```bash
@@ -44,6 +46,7 @@ You can re-run setup from **Settings**. Microphone access needs a secure context
   - Open-string warm-ups.
   - A 12-bar blues bass line.
   - The openings of Für Elise and the Minuet in G (piano, right hand, with fingering).
+  - On piano, Twinkle and Ode to Joy have **both hands**: a simple left hand written for this app (the chord root on beats 1 and 3). Their cards say "Both hands".
 
 ### Practice
 
@@ -61,7 +64,7 @@ On screen:
   - "You played F, aim for E: one fret lower";
   - "the key just to the left";
   - "A little sharp".
-  - An intonation needle and an "N in a row" counter.
+  - An intonation needle (not on piano, which can't be played out of tune) and an "N in a row" counter.
 - **Loops**: choose a section on the progress bar, or drag across it to loop bars A–B.
 
 Shortcuts:
@@ -71,6 +74,7 @@ Shortcuts:
 | Space | Start / pause |
 | R | Restart |
 | W | Switch mode |
+| H | Switch hands: right, left, both (two-handed piano pieces) |
 | [ ] | Tempo |
 | M | Metronome |
 | C | Count-in |
@@ -80,9 +84,28 @@ Shortcuts:
 
 **More** holds the backing track (a local audio file played at your tempo) and the guide tone (use headphones).
 
+### Piano and two hands
+
+Piano notes can belong to the right or the left hand. On a piece with both hands:
+
+- **Hands** (in the practice options, or **H**): Right, Left or Both. The choice is remembered per song.
+  - With one hand, only that hand's notes are required and scored. The other hand stays on the highway, faint, so you can see what it does; playing it along isn't counted as a mistake.
+  - With Both, notes that start together in either hand are one step in Wait for me (all of them required) and one timing group in Play along.
+  - **Play the other hand quietly** (under More, off by default) plays the hand you aren't practising as soft tones in Play along. Use headphones with a microphone.
+- **Telling the hands apart**, never by colour alone:
+  - The right hand is filled with the accent.
+  - The left hand is hatched in pencil with an ink outline on the keys, and hatched or ink-filled on the highway.
+  - Keys are labelled with hand and finger: "R2", "L5".
+- **The keyboard** fits the hands you're practising: the whole piece when it fits the screen, otherwise the notes coming up, split into a left-hand and a right-hand section when the hands are far apart. Keys stay at least 22 px wide, so it is readable on a phone.
+- **Hints name the hand**, for example "Left hand: you played C3, aim for A2: three keys to the left".
+- **The results** give the accuracy per hand. If one hand is clearly behind, the next step is to practise it alone.
+
+**Use a MIDI keyboard for two hands.** It reports every key exactly, so each key of a chord is checked with its own timing. A microphone hears one pitch at a time, so chords and two hands are only matched approximately; the app says "Two hands work best with a MIDI keyboard" when you choose Both with the microphone.
+
 ### Results
 
 - Accuracy and stars, timing and an early/late tendency, and the trickiest notes.
+- With both hands, the accuracy per hand. If one hand is clearly behind, the next step is to practise it alone. Runs with one hand of a two-handed piece are kept in the history but don't count as the song's best.
 - **Practice the tricky part**: loops the weakest bar at −20% tempo.
 - A suggested next step.
 - Best scores and history are saved in the browser.
@@ -111,7 +134,12 @@ A large needle with "Too high: loosen the string" / "Too low: tighten the string
   - **Other sites**: the smallest page element that contains the most tab lines.
   - **Privacy**: browsers block cross-origin fetches, so the link is fetched through third-party CORS proxies, [api.allorigins.win](https://allorigins.win) and [r.jina.ai](https://jina.ai/reader). They see the URL; nothing else is sent.
 - **Paste tab**: ASCII tab for guitar (6 lines), bass or ukulele (4 lines). It is read by line position, so duplicate `E` labels, drop-D labels, lowercase or missing labels and `| x2` annotations all work.
-- **MIDI file**: pick a track (the busiest non-drum track is the default) and optionally quantise to 1/4, 1/8 or 1/16.
+- **MIDI file**: optionally quantise to 1/4, 1/8 or 1/16.
+  - **Guitar, bass, ukulele**: pick a track (the busiest non-drum track is the default).
+  - **Piano**: each track goes to a hand.
+    - A file with several tracks lists them with their note count and range. The higher track starts as the right hand and the lower one as the left (track names like "RH" or "Left hand" win). You can set each track to Right hand, Left hand or Ignore. Drum tracks start as Ignore.
+    - A file with one track that holds both hands is split by pitch, one moment at a time. Each hand's notes stay together and within about an octave and a half (counting keys still held), close to where that hand has been playing, and otherwise near middle C. The dialog shows how many notes each hand gets, and you can keep everything in one hand instead. A single melody stays in one hand.
+    - **Practice**: Both hands (default), Right hand or Left hand. This sets the song's Hands choice, which you can change while practising.
 - **From a recording**: a clean single-note recording is transcribed in a Web Worker, with progress and Cancel.
 - **Advanced (JSON)**: an array of `{ note, start, duration }` (seconds), or `{ name, bpm, notes }`. Each note may also have:
   - `tab: { string, fret }`;
@@ -126,6 +154,16 @@ A large needle with "Too high: loosen the string" / "Too low: tighten the string
   { "note": "F4", "start": 0.5, "duration": 0.5, "finger": 2 }
 ]
 ```
+
+## Bring your own songs
+
+Import only MIDI files you have the rights to use (your own arrangements, public-domain music, or files whose licence allows it). The app ships no copyrighted music. Imported songs stay in your browser only: they are saved in its local storage and never uploaded.
+
+**Your own folder (local runs only).** Drop `.mid` or `.midi` files into `my-songs/` and run `npm run dev`. Each file shows up in the library under **My songs**, tagged **Local file**, as a piano piece with both hands assigned automatically. The title comes from the file name (`wet-hands.mid` becomes "Wet Hands"), and scores are kept like any other song's.
+
+- `my-songs/` is git-ignored (except its README), so the files are never committed. The GitHub Pages build starts from a fresh checkout and never includes them.
+- A local `npm run build` **does** bundle them into `dist/`. Don't publish a build made with files in `my-songs/`.
+- To choose the hands yourself, or to import for another instrument, use **Add a song → MIDI file** instead.
 
 ## How it works
 
@@ -150,13 +188,13 @@ MIDI keyboard (Web MIDI) ----------------------------------------- note on/off -
 
 ```
 src/main.js                  app shell (header, theme) and router
-src/app/                     shared context (settings, storage, library, audio engine), router
+src/app/                     shared context (settings, storage, library, audio engine), router, my-songs loader
 src/screens/                 library, add-song dialog, practice, summary, tuner, settings, setup, calibration
 src/practice/                session engine (modes, hits, timing, loops), summary, note highway
 src/audio/                   audio engine, capture worklet, detector and audio-to-tab workers
 src/input/midi.js            Web MIDI input
 src/dsp/                     pitch (MPM), onsets, chord spectrum
-src/import/                  CORS-proxy fetch, BPM metadata, MIDI files, recording transcription
+src/import/                  CORS-proxy fetch, BPM metadata, MIDI files and hand assignment, recording transcription
 src/instruments/             add-on registry: fretted (guitar, bass, ukulele) and piano
 src/piece.js, music.js       piece model and note maths
 src/songs/catalog.js         built-in songs
@@ -195,17 +233,20 @@ The "practice room" theme is described in `docs/ux-redesign.md`.
 ## Testing
 
 ```bash
-npm test                 # Vitest: 100 unit tests
+npm test                 # Vitest: 135 unit tests
 npm run check:contrast   # colour-token contrast and stray-colour check
 ```
 
 The unit tests cover:
 
-- the session engine in both modes, with MIDI and synthetic mic input;
+- the session engine in both modes, with MIDI and synthetic mic input, including hands selection and chords across the hands;
+- MIDI hand assignment (tracks to hands, the one-track split) and the my-songs loader, with synthetic MIDI files;
+- the keyboard fit (whole piece, wider with both hands, split sections on a phone);
 - the pitch and onset detectors;
 - instrument mapping (including the re-entrant ukulele), fingering, highway layouts and hint wording;
 - tab parsing for 4 and 6 strings and the Ultimate Guitar extractor;
 - MIDI file parsing, with tempo changes, running status and quantising;
+- per-hand results and the per-song hands choice;
 - Web MIDI input against a mock;
 - the summary, storage, the built-in songs and the tempo clock.
 
@@ -216,8 +257,9 @@ const e2e = await import('/tests/browser/e2e.js');
 await e2e.onboarding();
 await e2e.guitarRun();
 await e2e.guitarPlayAlong();
-await e2e.pianoRun();
-await e2e.pianoPlayAlong();
+await e2e.pianoRun();         // right hand only
+await e2e.pianoPlayAlong();   // both hands, Play along
+await e2e.pianoBothHands();   // both hands, Wait for me, one wrong left-hand key
 ```
 
 ## Deployment
@@ -227,7 +269,8 @@ await e2e.pianoPlayAlong();
 ## Limitations
 
 - **Microphone input is single-pitch.** Use a quiet room and a clean tone. With a microphone, chords are matched only approximately; a MIDI keyboard checks every key.
-- **Piano support is right hand first.** Two-hand pieces work, but pitch detection from a microphone is monophonic.
+- **Two hands need a MIDI keyboard to be judged exactly.** With a microphone, practise one hand at a time, or expect both hands to be matched approximately.
+- **The one-track split is a heuristic.** Crossed hands or wide leaps can land in the wrong hand; reassign tracks, or keep a track in one hand, in the import dialog.
 - **Your data stays in this browser.** Library, scores and settings live in its local storage.
 - **Browser support:** needs AudioWorklet and module Web Workers (current Chrome, Edge, Firefox and Safari). Web MIDI works in Chromium-based browsers and Firefox.
 

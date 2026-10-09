@@ -93,6 +93,7 @@ Choices are stored in `localStorage`.
   | Space | Start / pause |
   | R | Restart |
   | W | Switch mode |
+  | H | Switch hands (two-handed piano pieces) |
   | [ / ] | Tempo −/+5% |
   | M | Metronome |
   | L | Clear loop |
@@ -175,6 +176,13 @@ Notes on the table:
 
 - The current note, the active key and the hit line use the accent.
 - Upcoming notes are ink or cream outlines.
+
+**Hands (piano):**
+
+- The right hand keeps the accent. The left hand is drawn with pencil instead: hatched keys with a heavy ink outline (bone on black keys), hatched upcoming blocks, and an ink (cream in Stage) block for the current note. Keys carry "R2" / "L5" badges, so the hands never differ by colour alone.
+- The hand that isn't being practised is drawn faintly, outline only.
+- A *Hands* control (Right / Left / Both, shortcut `H`) sits next to the mode in the practice options and is remembered per song.
+- When both hands are far apart on a narrow screen, the keyboard shows a left-hand and a right-hand section with a break mark between them; keys stay at least 22 px wide.
 
 **Type:**
 
