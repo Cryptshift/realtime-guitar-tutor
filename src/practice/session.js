@@ -8,16 +8,25 @@
 //   'play' ("Play along")   - the piece runs on a tempo-scaled clock; a note counts when the
 //                             right pitch starts within its onset window of note.start.
 //
+// Hands (piano): `hands` is 'R', 'L' or 'both'. Only the selected hand's notes are required
+// and scored; the other hand's notes stay in the piece (the screen shows them dimmed) and
+// playing them is never counted as a mistake. With 'both', notes that start together in
+// either hand form one chord step (Wait for me) and share one onset window (Play along).
+//
 // All times are performance.now() milliseconds. Input times are shifted back by
 // `latencyMs` (how late the input arrives) before they are compared with the piece.
 import { createPieceClock } from '../clock.js';
-import { CHORD_GROUP_EPSILON_SECONDS, chordGroupBoundsAtIndex } from '../piece.js';
+import {
+  CHORD_GROUP_EPSILON_SECONDS, chordGroupBoundsAtIndex, handOf, inHands, isTwoHanded, normalizeHands, onsetWindowsFor,
+} from '../piece.js';
 
 export const HIT_CENTS = 35;
 export const WAIT_HOLD_MS = 220;
 export const PLAY_HOLD_MS = 140;
 export const WRONG_NOTE_STABLE_MS = 70;
 const PITCH_DROPOUT_MS = 90;
+// Play along: how far from an attack the other (unscored) hand's notes are recognised.
+const TIMED_OTHER_HAND_SLACK = 0.25;
 const MAX_ONSETS = 32;
 const PRAISE = ['Correct', 'Good', 'That’s it'];
 
@@ -41,10 +50,23 @@ export function createPracticeSession({
   countInBeats = 4,
   requireFullShape = true,
   loop = null,
+  hands = 'both',
 }) {
   const notes = piece.notes;
+  const twoHanded = isTwoHanded(piece);
+  const selectedHands = twoHanded ? normalizeHands(hands) : 'both';
   const playable = (note) => note && note.playable !== false;
+  // Required and scored in this run: playable and in the selected hand(s).
+  const active = (note) => playable(note) && inHands(note, selectedHands);
   const beatSeconds = 60 / (piece.bpm || 100);
+
+  // One hand alone gets onset windows from its own note gaps, not the other hand's.
+  const onsetWindows = new Map();
+  if (selectedHands !== 'both') {
+    const own = notes.filter(active);
+    onsetWindowsFor(own).forEach((window, i) => onsetWindows.set(own[i].index, window));
+  }
+  const windowOf = (note) => onsetWindows.get(note.index) ?? note.onsetWindow;
 
   const s = {
     mode,
@@ -72,6 +94,8 @@ export function createPracticeSession({
     events: [],
     chordMatcher: null,
     laps: 0,
+    // Start of the last completed step (Wait for me): the other hand may be played since then.
+    lastStepStart: -Infinity,
   };
 
   const emit = (event) => s.events.push(event);
@@ -91,14 +115,14 @@ export function createPracticeSession({
   function groupAt(index) {
     if (index < 0 || index >= notes.length) return [];
     const chordAware = s.requireFullShape;
-    if (!chordAware) return [notes[index]].filter(playable);
+    if (!chordAware) return [notes[index]].filter(active);
     const { startIndex, endIndex } = chordGroupBoundsAtIndex(notes, index);
-    return notes.slice(startIndex, endIndex + 1).filter(playable);
+    return notes.slice(startIndex, endIndex + 1).filter(active);
   }
 
   function firstStepIndexFrom(index) {
     let i = index;
-    while (i < notes.length && (!playable(notes[i]) || !inLoop(notes[i]))) {
+    while (i < notes.length && (!active(notes[i]) || !inLoop(notes[i]))) {
       if (s.loop && notes[i].start >= s.loop.end - 1e-6) return notes.length;
       i += 1;
     }
@@ -136,7 +160,7 @@ export function createPracticeSession({
       if (onset.pieceSeconds === null) continue;
       if (onset.consumedStart !== null && Math.abs(onset.consumedStart - note.start) > CHORD_GROUP_EPSILON_SECONDS) continue;
       const distance = Math.abs(onset.pieceSeconds - note.start);
-      if (distance <= note.onsetWindow && distance < bestDistance) {
+      if (distance <= windowOf(note) && distance < bestDistance) {
         best = onset;
         bestDistance = distance;
       }
@@ -145,6 +169,15 @@ export function createPracticeSession({
   }
 
   const latestOnset = () => s.onsets[s.onsets.length - 1] || null;
+
+  // The press of a held MIDI key, if it falls within the note's onset window.
+  function keyOnsetFor(note) {
+    const pressedMs = s.held.get(note.midi);
+    const onset = [...s.onsets].reverse().find((candidate) => candidate.timeMs === pressedMs);
+    if (!onset || onset.pieceSeconds === null) return null;
+    if (onset.consumedStart !== null && Math.abs(onset.consumedStart - note.start) > CHORD_GROUP_EPSILON_SECONDS) return null;
+    return Math.abs(onset.pieceSeconds - note.start) <= windowOf(note) ? onset : null;
+  }
 
   // ---- feedback ---------------------------------------------------------------------
   function setFeedback(nowMs, tone, text, icon = null, detail = '') {
@@ -193,12 +226,28 @@ export function createPracticeSession({
     emit({ type: 'miss', index: note.index, atMs: nowMs });
   }
 
-  // Hint for the note the learner should be playing.
+  // Of the notes still due, the one the learner was most likely reaching for.
+  function nearestTo(group) {
+    if (!s.heard || group.length < 2) return group[0] || null;
+    return group.reduce((best, note) => (Math.abs(note.midi - s.heard.midi) < Math.abs(best.midi - s.heard.midi) ? note : best));
+  }
+
+  // Hint for the note the learner should be playing. With both hands in play, it names the
+  // hand ("Left hand: you played C3, aim for A2: three keys to the left").
   function hintFeedback(target, nowMs) {
     if (!s.heard || !target) return;
     const cents = s.heard.exact ? 0 : (s.heard.midi - target.midi) * 100;
-    const hint = instrument.hintFor?.(target, s.heard.midi, cents);
+    const context = twoHanded ? { hand: selectedHands === 'both' ? handOf(target) : null, octave: true } : {};
+    const hint = instrument.hintFor?.(target, s.heard.midi, cents, context);
     if (hint) setFeedback(nowMs, hint.tone || 'off', hint.text, hint.icon || null);
+  }
+
+  // The other hand's notes are not scored: playing one of them (around now) isn't a mistake.
+  function isOtherHandNote(heardMidi, from, to) {
+    if (selectedHands === 'both' || !Number.isFinite(heardMidi)) return false;
+    const rounded = Math.round(heardMidi);
+    return notes.some((note) => playable(note) && !active(note) && note.midi === rounded
+      && note.start >= from - CHORD_GROUP_EPSILON_SECONDS && note.start <= to + CHORD_GROUP_EPSILON_SECONDS);
   }
 
   // ---- evaluation ---------------------------------------------------------------------
@@ -216,9 +265,13 @@ export function createPracticeSession({
     // Exact chords from MIDI: every remaining note held.
     if (s.held.size && group.length > 1 && fresh && group.every((note) => s.held.has(note.midi))) {
       group.forEach((note) => registerHit(note, nowMs));
+      if (onset) onset.hit = true;
     } else if (fresh && group.length > 1 && s.chordMatcher && !s.held.size) {
       const matched = s.chordMatcher(group);
-      if (matched && matched.length >= group.length) group.forEach((note) => registerHit(note, nowMs));
+      if (matched && matched.length >= group.length) {
+        group.forEach((note) => registerHit(note, nowMs));
+        if (onset) onset.hit = true;
+      }
     }
     group = stepGroup();
     if (!group.length) {
@@ -236,6 +289,7 @@ export function createPracticeSession({
       const holdMs = s.heard.exact ? Infinity : nowMs - holdFrom(s.heard);
       if (holdMs >= WAIT_HOLD_MS) {
         registerHit(target, nowMs);
+        if (onset) onset.hit = true;
         if (s.status === 'ready') s.status = 'running';
         if (!stepGroup().length) advance(nowMs);
       } else {
@@ -245,22 +299,27 @@ export function createPracticeSession({
     }
 
     // Wrong pitch after a fresh attack: count it once, and say how to fix it. (A note still
-    // ringing from the previous step is not an attempt, so it gets no hint.)
-    if (!fresh) return;
+    // ringing from the previous step is not an attempt, so it gets no hint; neither is a
+    // chord note that was just played correctly while the rest of the chord is still due.)
+    if (!fresh || onset?.hit) return;
     const stable = s.heard.exact || nowMs - Math.max(s.heard.since, onset ? onset.timeMs : -Infinity) >= WRONG_NOTE_STABLE_MS;
     if (!stable) return;
-    if (onset) registerWrong(group[0], nowMs, onset.id);
-    hintFeedback(group[0], nowMs);
+    if (isOtherHandNote(s.heard.midi, s.lastStepStart, group[0].start)) return;
+    const aim = nearestTo(group);
+    if (onset) registerWrong(aim, nowMs, onset.id);
+    hintFeedback(aim, nowMs);
   }
 
   function advance(nowMs) {
     const group = groupAt(s.stepIndex);
     const lastIndex = group.length ? group[group.length - 1].index : s.stepIndex;
+    if (group.length) s.lastStepStart = group[0].start;
     let next = firstStepIndexFrom(lastIndex + 1);
     if (s.loop && next >= notes.length) {
       s.laps += 1;
       resetResults(inLoop);
       next = firstStepIndexFrom(0);
+      s.lastStepStart = -Infinity;
       emit({ type: 'loop', atMs: nowMs });
     }
     s.stepIndex = next;
@@ -269,7 +328,7 @@ export function createPracticeSession({
   }
 
   function activePlayNotes(t, slackBefore) {
-    return notes.filter((note) => playable(note)
+    return notes.filter((note) => active(note)
       && inLoop(note)
       && t >= note.start - slackBefore
       && t < note.end + 0.05);
@@ -282,8 +341,10 @@ export function createPracticeSession({
     const candidates = activePlayNotes(tInput, 0.25).filter((note) => !s.results[note.index].hit && !s.results[note.index].missed);
 
     for (const note of candidates) {
-      const onset = onsetForNote(note);
+      // MIDI keys are judged by their own press time (exact, key by key); the microphone by
+      // the nearest attack, which a strummed or struck chord shares.
       const heldExactly = s.held.has(note.midi);
+      const onset = heldExactly ? keyOnsetFor(note) : onsetForNote(note);
       if (!onset) continue;
       if (heldExactly || matches(note)) {
         const holdMs = heldExactly || s.heard?.exact ? Infinity : nowMs - Math.max(s.heard.since, onset.timeMs);
@@ -297,26 +358,30 @@ export function createPracticeSession({
       }
     }
 
-    // Wrong attempt: a stable wrong pitch after an attack while a note is due.
+    // Wrong attempt: a stable wrong pitch after an attack while a note is due. An attack that
+    // already scored (one key of a chord) is not a wrong attempt at the rest of the chord.
     const onset = latestOnset();
     const due = candidates.filter((note) => !s.results[note.index].hit);
-    if (s.heard && onset && due.length && !due.some((note) => matches(note) || s.held.has(note.midi))) {
+    if (s.heard && onset && onset.consumedStart === null && due.length && !due.some((note) => matches(note) || s.held.has(note.midi))) {
       // Judge the pitch that follows the attack, not the previous note still in the window.
       const stable = s.heard.exact || nowMs - Math.max(s.heard.since, onset.timeMs) >= WRONG_NOTE_STABLE_MS;
-      const recent = onset.pieceSeconds !== null && Math.abs(onset.pieceSeconds - due[0].start) <= due[0].onsetWindow;
-      if (stable && recent) {
-        registerWrong(due[0], nowMs, onset.id);
-        hintFeedback(due[0], nowMs);
+      const aim = nearestTo(due);
+      const recent = onset.pieceSeconds !== null && Math.abs(onset.pieceSeconds - aim.start) <= windowOf(aim);
+      const otherHand = onset.pieceSeconds !== null
+        && isOtherHandNote(s.heard.midi, onset.pieceSeconds - TIMED_OTHER_HAND_SLACK, onset.pieceSeconds + TIMED_OTHER_HAND_SLACK);
+      if (stable && recent && !otherHand) {
+        registerWrong(aim, nowMs, onset.id);
+        hintFeedback(aim, nowMs);
       }
     }
 
     // Misses: once the note is over (judged a little late to allow for input latency).
     const judgeDelay = s.latencyMs / 1000 + 0.12;
     notes.forEach((note) => {
-      if (!playable(note) || !inLoop(note)) return;
+      if (!active(note) || !inLoop(note)) return;
       const result = s.results[note.index];
       if (result.hit || result.missed) return;
-      const windowOver = t - judgeDelay > note.start + note.onsetWindow && !onsetForNote(note);
+      const windowOver = t - judgeDelay > note.start + windowOf(note) && !onsetForNote(note);
       if (t - judgeDelay >= note.end || windowOver) registerMiss(note, nowMs);
     });
 
@@ -363,6 +428,11 @@ export function createPracticeSession({
     get loop() { return s.loop; },
     get tempoPercent() { return s.tempoPercent; },
     get laps() { return s.laps; },
+    // 'R' | 'L' | 'both' (always 'both' for one-handed pieces).
+    hands: selectedHands,
+    twoHanded,
+    // True when the note is required and scored in this run.
+    isActive: active,
     beatSeconds,
 
     // Wall-clock time (ms) at which the running piece reaches `seconds` (play mode).
@@ -409,6 +479,7 @@ export function createPracticeSession({
       s.streak = 0;
       s.hitCount = 0;
       s.laps = 0;
+      s.lastStepStart = -Infinity;
       s.countedWrongOnsets.clear();
       setFeedback(nowMs, 'idle', '');
       s.clock.seek(nowMs, startPosition());
@@ -488,19 +559,22 @@ export function createPracticeSession({
         position = current[0]?.start ?? endPosition();
       } else {
         position = pieceTime(nowMs);
-        const active = activePlayNotes(position, 0.08);
-        const focus = active.find((note) => !s.results[note.index].hit) || active[0];
+        const sounding = activePlayNotes(position, 0.08);
+        const focus = sounding.find((note) => !s.results[note.index].hit) || sounding[0];
         if (focus) current = groupAt(focus.index);
-        const after = notes.find((note) => playable(note) && inLoop(note) && note.start > (current[0]?.start ?? position) + CHORD_GROUP_EPSILON_SECONDS);
+        const after = notes.find((note) => active(note) && inLoop(note) && note.start > (current[0]?.start ?? position) + CHORD_GROUP_EPSILON_SECONDS);
         if (after) upcoming = groupAt(after.index);
       }
       const target = current.find((note) => !s.results[note.index].hit) || current[0] || null;
       const beatsLeft = s.status === 'countin' ? Math.ceil((startPosition() - pieceTime(nowMs)) / beatSeconds - 1e-6) : 0;
-      const total = notes.filter((note) => playable(note) && inLoop(note)).length;
-      const done = notes.filter((note) => playable(note) && inLoop(note) && s.results[note.index].hit).length;
+      const total = notes.filter((note) => active(note) && inLoop(note)).length;
+      const done = notes.filter((note) => active(note) && inLoop(note) && s.results[note.index].hit).length;
       return {
         status: s.status,
         mode: s.mode,
+        hands: selectedHands,
+        twoHanded,
+        isActive: active,
         position,
         countInBeat: beatsLeft,
         current,

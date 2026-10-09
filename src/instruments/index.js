@@ -10,7 +10,8 @@
 //   annotatePiece?(notes)                          e.g. suggested fingers for a whole piece
 //   shortLabel(note), positionText(note)           highway label / "String 3 (G), fret 2"
 //   describeGroup(note, group), describeSlot(note, group, empty)
-//   hintFor(target, playedMidi, cents) -> { text, icon, tone } | null
+//   hintFor(target, playedMidi, cents, context?) -> { text, icon, tone } | null
+//                                                  context: { hand: 'R'|'L'|null, octave } (piano)
 //   highwayLayout(piece) -> { lanes: [{ label }], laneOf(note), labelOf(note) }
 //   view: { title, legend }
 //   renderInstrumentView(container, { current, upcoming, leftHanded, showLabels, pieceRange })

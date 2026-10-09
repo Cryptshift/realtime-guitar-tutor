@@ -107,7 +107,8 @@ export function normalizePiece(piece, instrument = getInstrument()) {
 
 // Timed-mode onset tolerance per note (seconds): half the gap to the neighbouring note
 // starts (chord tones share a start), clamped to [TIMED_MIN_ONSET_WINDOW_MS, TIMED_ONSET_WINDOW_MS].
-export function assignOnsetWindows(notes) {
+// Returns one window per note, in the order given (notes must be sorted by start).
+export function onsetWindowsFor(notes) {
   const groupStarts = [];
   notes.forEach((note) => {
     if (!groupStarts.length || note.start - groupStarts.at(-1) > CHORD_GROUP_EPSILON_SECONDS) {
@@ -116,18 +117,57 @@ export function assignOnsetWindows(notes) {
   });
 
   let groupIndex = 0;
-  notes.forEach((note) => {
+  return notes.map((note) => {
     while (groupIndex + 1 < groupStarts.length && groupStarts[groupIndex + 1] <= note.start + 1e-9) {
       groupIndex += 1;
     }
     const prevGap = groupIndex > 0 ? note.start - groupStarts[groupIndex - 1] : Infinity;
     const nextGap = groupIndex + 1 < groupStarts.length ? groupStarts[groupIndex + 1] - note.start : Infinity;
     const halfGap = Math.min(prevGap, nextGap) / 2;
-    note.onsetWindow = Math.min(
+    return Math.min(
       TIMED_ONSET_WINDOW_MS / 1000,
       Math.max(TIMED_MIN_ONSET_WINDOW_MS / 1000, halfGap),
     );
   });
+}
+
+export function assignOnsetWindows(notes) {
+  onsetWindowsFor(notes).forEach((window, i) => {
+    notes[i].onsetWindow = window;
+  });
+}
+
+// ---- hands (piano) ----------------------------------------------------------------------
+// Notes may carry hand: 'R' | 'L'. Unlabelled notes belong to the right hand (built-in piano
+// pieces were right hand first). A practice selection is 'R', 'L' or 'both'.
+export const HAND_CHOICES = ['R', 'L', 'both'];
+
+export const HAND_NAMES = { R: 'Right hand', L: 'Left hand', both: 'Both hands' };
+
+export const handOf = (note) => (note?.hand === 'L' ? 'L' : 'R');
+
+export function normalizeHands(value) {
+  return HAND_CHOICES.includes(value) ? value : 'both';
+}
+
+// True when a note is part of the selected hand(s).
+export function inHands(note, hands = 'both') {
+  return hands === 'both' || handOf(note) === hands;
+}
+
+// Note counts per hand ({ R, L }), counting playable notes only.
+export function handCounts(piece) {
+  const counts = { R: 0, L: 0 };
+  (piece?.notes || []).forEach((note) => {
+    if (note.playable !== false) counts[handOf(note)] += 1;
+  });
+  return counts;
+}
+
+// A piece has two hands when both hands have notes to play.
+export function isTwoHanded(piece) {
+  const counts = handCounts(piece);
+  return counts.R > 0 && counts.L > 0;
 }
 
 export function createVirtualNote(noteName, instrument = getInstrument()) {

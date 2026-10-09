@@ -38,7 +38,7 @@ export const piano = {
     hint: note ? describeNote(note) : emptyMessage,
     diagram: '',
   }),
-  hintFor: (target, playedMidi) => pianoHint(target, playedMidi),
+  hintFor: (target, playedMidi, cents, context) => pianoHint(target, playedMidi, context),
 
   // Note highway: one lane per distinct pitch (high at the top), compressed when a piece
   // uses many pitches; blocks show the key name.
